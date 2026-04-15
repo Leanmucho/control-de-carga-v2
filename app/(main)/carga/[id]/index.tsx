@@ -5,16 +5,16 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useCarga } from '../../../src/hooks/useCarga'
-import { addCliente } from '../../../src/lib/queries/clientes'
-import { addIncidencia } from '../../../src/lib/queries/incidencias'
-import { Button } from '../../../src/components/ui/Button'
-import { Card } from '../../../src/components/ui/Card'
-import { EstadoBadge } from '../../../src/components/EstadoBadge'
-import { Input } from '../../../src/components/ui/Input'
-import { colors, spacing } from '../../../src/constants/theme'
-import { TRANSICIONES, TRANSICION_LABELS, TIPOS_INCIDENCIA } from '../../../src/constants/estados'
-import type { EstadoCarga } from '../../../src/constants/estados'
+import { useCarga } from '../../../../src/hooks/useCarga'
+import { addCliente } from '../../../../src/lib/queries/clientes'
+import { addIncidencia } from '../../../../src/lib/queries/incidencias'
+import { Button } from '../../../../src/components/ui/Button'
+import { Card } from '../../../../src/components/ui/Card'
+import { EstadoBadge } from '../../../../src/components/EstadoBadge'
+import { Input } from '../../../../src/components/ui/Input'
+import { colors, spacing } from '../../../../src/constants/theme'
+import { TRANSICIONES, TRANSICION_LABELS, TIPOS_INCIDENCIA } from '../../../../src/constants/estados'
+import type { EstadoCarga } from '../../../../src/constants/estados'
 
 export default function CargaDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -62,7 +62,7 @@ export default function CargaDetailScreen() {
       await addCliente({
         carga_id: id,
         nombre: nuevoCliente.trim(),
-        orden: (carga.clientes_carga?.length ?? 0) + 1,
+        orden: (carga?.clientes_carga?.length ?? 0) + 1,
       })
       setNuevoCliente('')
       setShowCliente(false)
