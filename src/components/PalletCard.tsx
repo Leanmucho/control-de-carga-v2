@@ -5,38 +5,43 @@ import type { Pallet } from '../types/database'
 
 interface Props {
   pallet: Pallet
-  index?: number
+  index: number
   onCheck: () => void
-  onEdit: () => void
-  onDelete: () => void
+  onLongPress: () => void
 }
 
-export function PalletCard({ pallet, index, onCheck, onEdit, onDelete }: Props) {
+export function PalletCard({ pallet, index, onCheck, onLongPress }: Props) {
   const cargado = pallet.estado === 'cargado'
 
   return (
-    <View style={[styles.card, cargado && styles.cardCargado]}>
+    <TouchableOpacity
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      activeOpacity={0.85}
+      style={[styles.card, cargado && styles.cardCargado]}
+    >
+      {/* Check zone */}
       <TouchableOpacity
         style={styles.checkZone}
         onPress={onCheck}
         disabled={cargado}
-        activeOpacity={0.65}
+        activeOpacity={0.6}
+        hitSlop={8}
       >
         <View style={[styles.circle, cargado && styles.circleDone]}>
           {cargado && <Text style={styles.tick}>✓</Text>}
         </View>
       </TouchableOpacity>
 
+      {/* Info */}
       <View style={styles.info}>
-        {index !== undefined && (
-          <Text style={styles.index}>Pallet {index + 1}</Text>
-        )}
+        <Text style={styles.index}>Pallet {index + 1}</Text>
         <Text style={[styles.cajas, cargado && styles.cajasDone]}>
           {pallet.cantidad_cajas} cajas
         </Text>
         {pallet.hora_carga && (
           <Text style={styles.hora}>
-            Cargado a las{' '}
+            Cargado{' '}
             {new Date(pallet.hora_carga).toLocaleTimeString('es-AR', {
               hour: '2-digit', minute: '2-digit',
             })}
@@ -44,21 +49,22 @@ export function PalletCard({ pallet, index, onCheck, onEdit, onDelete }: Props) 
         )}
       </View>
 
-      {!cargado && (
-        <View style={styles.actions}>
-          <TouchableOpacity onPress={onEdit} style={styles.actionBtn} hitSlop={8}>
-            <View style={styles.actionIcon}>
-              <Text style={styles.actionText}>✎</Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onDelete} style={styles.actionBtn} hitSlop={8}>
-            <View style={[styles.actionIcon, styles.actionIconDanger]}>
-              <Text style={[styles.actionText, styles.actionTextDanger]}>✕</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+      {/* Estado indicator */}
+      <View style={styles.right}>
+        {cargado ? (
+          <View style={styles.estadoDone}>
+            <Text style={styles.estadoDoneText}>CARGADO</Text>
+          </View>
+        ) : (
+          <View style={styles.estadoPiso}>
+            <Text style={styles.estadoPisoText}>EN PISO</Text>
+          </View>
+        )}
+        {!cargado && (
+          <Text style={styles.longPressHint}>mantené</Text>
+        )}
+      </View>
+    </TouchableOpacity>
   )
 }
 
@@ -72,14 +78,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: 6,
     overflow: 'hidden',
-    minHeight: 56,
+    minHeight: 60,
   },
   cardCargado: {
     borderColor: '#14532d',
     backgroundColor: '#052e16',
   },
   checkZone: {
-    width: 56,
+    width: 60,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
@@ -87,9 +93,9 @@ const styles = StyleSheet.create({
     borderRightColor: colors.border,
   },
   circle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: colors.borderHigh,
     alignItems: 'center',
@@ -101,9 +107,9 @@ const styles = StyleSheet.create({
   },
   tick: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
-    lineHeight: 16,
+    lineHeight: 17,
   },
   info: {
     flex: 1,
@@ -120,9 +126,9 @@ const styles = StyleSheet.create({
   },
   cajas: {
     color: colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: -0.2,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   cajasDone: { color: '#4ade80' },
   hora: {
@@ -130,31 +136,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-  actions: {
-    flexDirection: 'row',
-    paddingRight: spacing.sm,
+  right: {
+    paddingRight: spacing.md,
+    alignItems: 'flex-end',
     gap: 4,
   },
-  actionBtn: {
-    padding: 4,
-  },
-  actionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
+  estadoDone: {
+    backgroundColor: '#052e16',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#166534',
   },
-  actionIconDanger: {
-    backgroundColor: '#2d0a0a',
-    borderColor: '#7f1d1d',
+  estadoDoneText: {
+    color: '#4ade80',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
-  actionText: {
-    fontSize: 14,
-    color: colors.textMuted,
+  estadoPiso: {
+    backgroundColor: '#0c1f36',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#1e3a5f',
   },
-  actionTextDanger: { color: '#f87171' },
+  estadoPisoText: {
+    color: '#60a5fa',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  longPressHint: {
+    color: colors.textFaint,
+    fontSize: 9,
+    letterSpacing: 0.3,
+  },
 })

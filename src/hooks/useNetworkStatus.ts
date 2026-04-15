@@ -1,8 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
-import { AppState, AppStateStatus } from 'react-native'
+import { AppState, AppStateStatus, Platform } from 'react-native'
 import { syncOfflineQueue } from '../lib/offline/sync'
 
 async function checkOnline(): Promise<boolean> {
+  // navigator.onLine es suficiente en web y evita errores de CORS
+  if (Platform.OS === 'web') {
+    return typeof navigator !== 'undefined' ? navigator.onLine : true
+  }
   try {
     const res = await fetch('https://www.google.com/generate_204', {
       method: 'HEAD',
