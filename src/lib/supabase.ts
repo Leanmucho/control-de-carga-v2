@@ -1,14 +1,56 @@
 import { createClient } from '@supabase/supabase-js'
+import { Platform } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? ''
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
-// SecureStore tiene límite de 2048 chars por key — para tokens JWT grandes usamos chunks
-const SecureStoreAdapter = {
+// En web usamos localStorage directamente — expo-secure-store no garantiza
+// que sus Promises resuelvan en web, lo que cuelga signInWithPassword.
+// En nativo usamos SecureStore con chunking para tokens JWT > 2048 chars.
+
+const webStorage = {
+  getItem: (key: string): Promise<string | null> => {
+    try {
+      return Promise.resolve(localStorage.getItem(key))
+    } catch {
+      return Promise.resolve(null)
+    }
+  },
+  setItem: (key: string, value: string): Promise<void> => {
+    try {
+      localStorage.setItem(key, value)
+    } catch {
+      // Ignorar errores de cuota
+    }
+    return Promise.resolve()
+  },
+  removeItem: (key: string): Promise<void> => {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // Ignorar
+    }
+    return Promise.resolve()
+  },
+}
+
+const nativeStorage = {
   getItem: async (key: string): Promise<string | null> => {
     try {
-      return await SecureStore.getItemAsync(key)
+      // Intentar leer directo
+      const direct = await SecureStore.getItemAsync(key)
+      if (direct) return direct
+      // Si fue guardado en chunks, reconstruir
+      const chunksStr = await SecureStore.getItemAsync(`${key}_chunks`)
+      if (!chunksStr) return null
+      const chunks = parseInt(chunksStr)
+      let result = ''
+      for (let i = 0; i < chunks; i++) {
+        const part = await SecureStore.getItemAsync(`${key}_${i}`)
+        result += part ?? ''
+      }
+      return result || null
     } catch {
       return null
     }
@@ -17,7 +59,7 @@ const SecureStoreAdapter = {
     try {
       await SecureStore.setItemAsync(key, value)
     } catch {
-      // Si el valor es muy largo para SecureStore, lo guardamos en partes
+      // Valor muy largo — guardar en chunks de 1800 chars
       const chunks = Math.ceil(value.length / 1800)
       await SecureStore.setItemAsync(`${key}_chunks`, String(chunks))
       for (let i = 0; i < chunks; i++) {
@@ -29,7 +71,10 @@ const SecureStoreAdapter = {
     try {
       await SecureStore.deleteItemAsync(key)
     } catch {
-      // Limpiar chunks si existen
+      // ignorar
+    }
+    // Limpiar chunks si existen
+    try {
       const chunksStr = await SecureStore.getItemAsync(`${key}_chunks`)
       if (chunksStr) {
         const chunks = parseInt(chunksStr)
@@ -38,13 +83,17 @@ const SecureStoreAdapter = {
           await SecureStore.deleteItemAsync(`${key}_${i}`)
         }
       }
+    } catch {
+      // ignorar
     }
   },
 }
 
+const storage = Platform.OS === 'web' ? webStorage : nativeStorage
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    storage: SecureStoreAdapter,
+    storage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
