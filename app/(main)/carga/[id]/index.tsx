@@ -4,7 +4,8 @@ import {
   TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'
+import { useCallback } from 'react'
 import { useCarga } from '../../../../src/hooks/useCarga'
 import { addCliente } from '../../../../src/lib/queries/clientes'
 import { addIncidencia } from '../../../../src/lib/queries/incidencias'
@@ -21,6 +22,9 @@ export default function CargaDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
   const { carga, loading, avanzar, registrarLlegada, guardarNotaCarga, checkPallet, refresh } = useCarga(id)
+
+  // Recargar cada vez que la pantalla queda en foco (ej: al volver de pallets)
+  useFocusEffect(useCallback(() => { refresh() }, [refresh]))
 
   const [notaText, setNotaText] = useState('')
   const [showNota, setShowNota] = useState(false)
