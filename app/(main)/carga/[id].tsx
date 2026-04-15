@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Alert, TextInput, Modal,
-  TouchableOpacity, ActivityIndicator,
+  TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -239,74 +239,86 @@ export default function CargaDetailScreen() {
       </ScrollView>
 
       <Modal visible={showCliente} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Nuevo cliente</Text>
-            <Input
-              value={nuevoCliente}
-              onChangeText={setNuevoCliente}
-              placeholder="Nombre del cliente"
-              autoCapitalize="words"
-              autoFocus
-            />
-            <View style={styles.modalBtns}>
-              <Button label="Cancelar" onPress={() => setShowCliente(false)} variant="secondary" style={{ flex: 1 }} />
-              <Button label="Agregar" onPress={handleAddCliente} loading={saving} style={{ flex: 1 }} />
-            </View>
+        <TouchableWithoutFeedback onPress={() => setShowCliente(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Nuevo cliente</Text>
+                <Input
+                  value={nuevoCliente}
+                  onChangeText={setNuevoCliente}
+                  placeholder="Nombre del cliente"
+                  autoCapitalize="words"
+                  autoFocus
+                />
+                <View style={styles.modalBtns}>
+                  <Button label="Cancelar" onPress={() => setShowCliente(false)} variant="secondary" style={{ flex: 1 }} />
+                  <Button label="Agregar" onPress={handleAddCliente} loading={saving} style={{ flex: 1 }} />
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       <Modal visible={showNota} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Nota de carga</Text>
-            <TextInput
-              style={styles.textArea}
-              value={notaText}
-              onChangeText={setNotaText}
-              placeholder="Escribí una nota..."
-              placeholderTextColor={colors.textFaint}
-              multiline
-              numberOfLines={4}
-              autoFocus
-            />
-            <View style={styles.modalBtns}>
-              <Button label="Cancelar" onPress={() => setShowNota(false)} variant="secondary" style={{ flex: 1 }} />
-              <Button label="Guardar" onPress={handleGuardarNota} loading={saving} style={{ flex: 1 }} />
-            </View>
+        <TouchableWithoutFeedback onPress={() => setShowNota(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Nota de carga</Text>
+                <TextInput
+                  style={styles.textArea}
+                  value={notaText}
+                  onChangeText={setNotaText}
+                  placeholder="Escribí una nota..."
+                  placeholderTextColor={colors.textFaint}
+                  multiline
+                  numberOfLines={4}
+                  autoFocus
+                />
+                <View style={styles.modalBtns}>
+                  <Button label="Cancelar" onPress={() => setShowNota(false)} variant="secondary" style={{ flex: 1 }} />
+                  <Button label="Guardar" onPress={handleGuardarNota} loading={saving} style={{ flex: 1 }} />
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       <Modal visible={showIncidencia} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Nueva incidencia</Text>
-            <View style={styles.tipoRow}>
-              {TIPOS_INCIDENCIA.map(t => (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.tipoBtn, incTipo === t && styles.tipoBtnActive]}
-                  onPress={() => setIncTipo(t)}
-                >
-                  <Text style={[styles.tipoBtnText, incTipo === t && styles.tipoBtnTextActive]}>{t}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Input
-              value={incDesc}
-              onChangeText={setIncDesc}
-              placeholder="Descripción"
-              containerStyle={{ marginTop: spacing.sm }}
-              autoFocus
-            />
-            <View style={styles.modalBtns}>
-              <Button label="Cancelar" onPress={() => setShowIncidencia(false)} variant="secondary" style={{ flex: 1 }} />
-              <Button label="Registrar" onPress={handleAddIncidencia} loading={saving} style={{ flex: 1 }} />
-            </View>
+        <TouchableWithoutFeedback onPress={() => setShowIncidencia(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Nueva incidencia</Text>
+                <View style={styles.tipoRow}>
+                  {TIPOS_INCIDENCIA.map(t => (
+                    <TouchableOpacity
+                      key={t}
+                      style={[styles.tipoBtn, incTipo === t && styles.tipoBtnActive]}
+                      onPress={() => setIncTipo(t)}
+                    >
+                      <Text style={[styles.tipoBtnText, incTipo === t && styles.tipoBtnTextActive]}>{t}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Input
+                  value={incDesc}
+                  onChangeText={setIncDesc}
+                  placeholder="Descripción"
+                  containerStyle={{ marginTop: spacing.sm }}
+                  autoFocus
+                />
+                <View style={styles.modalBtns}>
+                  <Button label="Cancelar" onPress={() => setShowIncidencia(false)} variant="secondary" style={{ flex: 1 }} />
+                  <Button label="Registrar" onPress={handleAddIncidencia} loading={saving} style={{ flex: 1 }} />
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   )

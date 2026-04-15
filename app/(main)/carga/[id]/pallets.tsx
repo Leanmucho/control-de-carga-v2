@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Modal, TouchableOpacity,
-  Alert, TextInput,
+  TouchableWithoutFeedback, Alert, TextInput,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -180,93 +180,107 @@ export default function PalletsScreen() {
 
       {/* Modal: Agregar pallet individual */}
       <Modal visible={showAdd} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Agregar pallet</Text>
-            <TextInput
-              style={styles.numInput}
-              value={cajasInput}
-              onChangeText={setCajasInput}
-              placeholder="Cantidad de cajas"
-              placeholderTextColor={colors.textFaint}
-              keyboardType="numeric"
-              autoFocus
-            />
-            <View style={styles.modalBtns}>
-              <Button label="Cancelar" onPress={() => setShowAdd(false)} variant="secondary" style={{ flex: 1 }} />
-              <Button label="Agregar" onPress={handleAdd} style={{ flex: 1 }} />
-            </View>
+        <TouchableWithoutFeedback onPress={() => setShowAdd(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Agregar pallet</Text>
+                <TextInput
+                  style={styles.numInput}
+                  value={cajasInput}
+                  onChangeText={setCajasInput}
+                  placeholder="Cantidad de cajas"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="numeric"
+                  autoFocus
+                />
+                <View style={styles.modalBtns}>
+                  <Button label="Cancelar" onPress={() => setShowAdd(false)} variant="secondary" style={{ flex: 1 }} />
+                  <Button label="Agregar" onPress={handleAdd} style={{ flex: 1 }} />
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* Modal: Agregar múltiples pallets */}
       <Modal visible={showBulk} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Agregar varios pallets</Text>
-            <TextInput
-              style={styles.numInput}
-              value={bulkCantidad}
-              onChangeText={setBulkCantidad}
-              placeholder="Cantidad de pallets"
-              placeholderTextColor={colors.textFaint}
-              keyboardType="numeric"
-              autoFocus
-            />
-            <TextInput
-              style={[styles.numInput, { marginTop: spacing.sm }]}
-              value={bulkCajas}
-              onChangeText={setBulkCajas}
-              placeholder="Cajas por pallet"
-              placeholderTextColor={colors.textFaint}
-              keyboardType="numeric"
-            />
-            {bulkCantidad && bulkCajas ? (
-              <Text style={styles.bulkPreview}>
-                {bulkCantidad} pallets × {bulkCajas} cajas = {parseInt(bulkCantidad || '0') * parseInt(bulkCajas || '0')} cajas
-              </Text>
-            ) : null}
-            <View style={styles.modalBtns}>
-              <Button label="Cancelar" onPress={() => setShowBulk(false)} variant="secondary" style={{ flex: 1 }} />
-              <Button label="Agregar" onPress={handleBulk} style={{ flex: 1 }} />
-            </View>
+        <TouchableWithoutFeedback onPress={() => setShowBulk(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Agregar varios pallets</Text>
+                <TextInput
+                  style={styles.numInput}
+                  value={bulkCantidad}
+                  onChangeText={setBulkCantidad}
+                  placeholder="Cantidad de pallets"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="numeric"
+                  autoFocus
+                />
+                <TextInput
+                  style={[styles.numInput, { marginTop: spacing.sm }]}
+                  value={bulkCajas}
+                  onChangeText={setBulkCajas}
+                  placeholder="Cajas por pallet"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="numeric"
+                />
+                {bulkCantidad && bulkCajas ? (
+                  <Text style={styles.bulkPreview}>
+                    {bulkCantidad} pallets × {bulkCajas} cajas = {parseInt(bulkCantidad || '0') * parseInt(bulkCajas || '0')} cajas
+                  </Text>
+                ) : null}
+                <View style={styles.modalBtns}>
+                  <Button label="Cancelar" onPress={() => setShowBulk(false)} variant="secondary" style={{ flex: 1 }} />
+                  <Button label="Agregar" onPress={handleBulk} style={{ flex: 1 }} />
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* Modal: Editar pallet */}
       <Modal visible={!!showEdit} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Editar pallet</Text>
-            <TextInput
-              style={styles.numInput}
-              value={editCajas}
-              onChangeText={setEditCajas}
-              placeholder="Cantidad de cajas"
-              placeholderTextColor={colors.textFaint}
-              keyboardType="numeric"
-              autoFocus
-            />
-            <View style={styles.modalBtns}>
-              <Button label="Cancelar" onPress={() => setShowEdit(null)} variant="secondary" style={{ flex: 1 }} />
-              <Button label="Guardar" onPress={handleEdit} style={{ flex: 1 }} />
-            </View>
+        <TouchableWithoutFeedback onPress={() => setShowEdit(null)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Editar pallet</Text>
+                <TextInput
+                  style={styles.numInput}
+                  value={editCajas}
+                  onChangeText={setEditCajas}
+                  placeholder="Cantidad de cajas"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="numeric"
+                  autoFocus
+                />
+                <View style={styles.modalBtns}>
+                  <Button label="Cancelar" onPress={() => setShowEdit(null)} variant="secondary" style={{ flex: 1 }} />
+                  <Button label="Guardar" onPress={handleEdit} style={{ flex: 1 }} />
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* Calculadora */}
       <Modal visible={showCalc} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.calcBox}>
-            <View style={styles.calcHeader}>
-              <Text style={styles.modalTitle}>Calculadora</Text>
-              <TouchableOpacity onPress={() => setShowCalc(false)}>
-                <Text style={styles.calcClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
+        <TouchableWithoutFeedback onPress={() => setShowCalc(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.calcBox}>
+                <View style={styles.calcHeader}>
+                  <Text style={styles.modalTitle}>Calculadora</Text>
+                  <TouchableOpacity onPress={() => setShowCalc(false)}>
+                    <Text style={styles.calcClose}>✕</Text>
+                  </TouchableOpacity>
+                </View>
             <View style={styles.calcDisplay}>
               <Text style={styles.calcOp}>{calcPrev} {calcOp}</Text>
               <Text style={styles.calcNum}>{calcDisplay}</Text>
@@ -298,8 +312,10 @@ export default function PalletsScreen() {
                 )}
               </View>
             ))}
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   )
