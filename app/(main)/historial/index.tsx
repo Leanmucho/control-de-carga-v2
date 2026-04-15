@@ -117,7 +117,7 @@ export default function HistorialScreen() {
           renderItem={({ item }) => (
             <CargaCard
               carga={item}
-              onPress={() => router.push({ pathname: '/(main)/carga/[id]/index', params: { id: item.id } })}
+              onPress={() => router.push({ pathname: '/(main)/carga/[id]', params: { id: item.id } })}
             />
           )}
           ListEmptyComponent={

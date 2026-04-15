@@ -121,7 +121,7 @@ export default function CargasScreen() {
                 key={c.id}
                 carga={c}
                 onPress={() => router.push({
-                  pathname: '/(main)/carga/[id]/index',
+                  pathname: '/(main)/carga/[id]',
                   params: { id: c.id },
                 })}
               />

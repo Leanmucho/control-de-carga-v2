@@ -205,7 +205,7 @@ export default function TurnoScreen() {
               <CargaCard
                 key={c.id}
                 carga={c}
-                onPress={() => router.push({ pathname: '/(main)/carga/[id]/index', params: { id: c.id } })}
+                onPress={() => router.push({ pathname: '/(main)/carga/[id]', params: { id: c.id } })}
               />
             ))
           )}
