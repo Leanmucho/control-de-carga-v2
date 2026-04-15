@@ -57,5 +57,5 @@ export function useAuth() {
     await supabase.auth.signOut()
   }
 
-  return { session, perfil, loading, signIn, signOut }
+  return { session, perfil, loading, signIn, signOut, userId: session?.user?.id ?? null }
 }

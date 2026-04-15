@@ -8,14 +8,17 @@ import { getCargas } from '../../../src/lib/queries/cargas'
 import { Button } from '../../../src/components/ui/Button'
 import { CargaCard } from '../../../src/components/CargaCard'
 import { colors, spacing } from '../../../src/constants/theme'
+import { construirResumen, guardarResumenLocal, enviarResumenPorEmail } from '../../../src/lib/turnoResumen'
 import type { Carga } from '../../../src/types/database'
+import type { ResumenTurno } from '../../../src/lib/turnoResumen'
 
 export default function TurnoScreen() {
   const { turno, loading, iniciar, finalizar } = useTurnoActivo()
-  const { perfil, signOut } = useAuth()
+  const { perfil, signOut, userId } = useAuth()
   const router = useRouter()
   const [cargas, setCargas] = useState<Carga[]>([])
   const [cargasLoading, setCargasLoading] = useState(false)
+  const [finalizando, setFinalizando] = useState(false)
 
   useFocusEffect(
     useCallback(() => {
@@ -39,23 +42,76 @@ export default function TurnoScreen() {
   const totalInc = cargas.reduce((s, c) => s + (c.incidencias?.length ?? 0), 0)
 
   async function handleIniciarTurno() {
-    if (!perfil) return
-    try { await iniciar(perfil.id) }
-    catch (e: unknown) { Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo iniciar') }
+    const id = perfil?.id ?? userId
+    if (!id) { Alert.alert('Error', 'No hay sesión activa'); return }
+    try { await iniciar(id) }
+    catch (e: unknown) { Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo iniciar el turno') }
   }
 
   async function handleFinalizarTurno() {
     if (!turno) return
-    Alert.alert('Finalizar turno', 'Se cerrara el turno activo.', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Finalizar', style: 'destructive',
-        onPress: async () => {
-          try { await finalizar(turno.id) }
-          catch (e: unknown) { Alert.alert('Error', e instanceof Error ? e.message : 'Error') }
+    Alert.alert(
+      'Finalizar turno',
+      `Se cerrará el turno con ${cargas.length} carga${cargas.length !== 1 ? 's' : ''} registradas. El resumen se guardará localmente.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Finalizar',
+          style: 'destructive',
+          onPress: () => ejecutarFinalizar(),
         },
-      },
-    ])
+      ]
+    )
+  }
+
+  async function ejecutarFinalizar() {
+    if (!turno) return
+    setFinalizando(true)
+    let resumen: ResumenTurno | null = null
+    try {
+      const controlador = perfil?.nombre ?? 'Controlador'
+      resumen = await construirResumen(turno.id, controlador)
+      await guardarResumenLocal(resumen)
+    } catch {
+      // No bloqueamos la finalización si falla el resumen — lo ignoramos
+    }
+
+    try {
+      await finalizar(turno.id)
+    } catch (e: unknown) {
+      setFinalizando(false)
+      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo finalizar el turno')
+      return
+    }
+
+    setFinalizando(false)
+
+    if (resumen) {
+      Alert.alert(
+        'Turno finalizado ✓',
+        'El resumen quedó guardado en el dispositivo. ¿Querés enviarlo por email ahora?',
+        [
+          {
+            text: 'Ahora no',
+            style: 'cancel',
+          },
+          {
+            text: 'Enviar email',
+            onPress: () => ofrecerEmail(resumen!),
+          },
+        ]
+      )
+    }
+  }
+
+  async function ofrecerEmail(resumen: ResumenTurno) {
+    const resultado = await enviarResumenPorEmail(resumen)
+    if (resultado === 'unavailable') {
+      Alert.alert(
+        'Sin cliente de mail',
+        'No hay una app de correo configurada en este dispositivo. El resumen quedó guardado para enviarlo más tarde.'
+      )
+    }
   }
 
   if (loading) {
@@ -122,10 +178,11 @@ export default function TurnoScreen() {
                 style={{ flex: 1 }}
               />
               <Button
-                label="Finalizar"
+                label={finalizando ? 'Guardando…' : 'Finalizar'}
                 onPress={handleFinalizarTurno}
                 variant="danger"
                 style={{ flex: 1 }}
+                disabled={finalizando}
               />
             </View>
           </View>
