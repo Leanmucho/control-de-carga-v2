@@ -2,11 +2,20 @@ import { supabase } from '../supabase'
 import type { Turno } from '../../types/database'
 
 export async function getTurnoActivo(): Promise<Turno | null> {
-  const { data } = await supabase
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
     .from('turnos')
     .select('*, controlador:perfiles(nombre)')
     .eq('activo', true)
-    .single()
+    .eq('controlador_id', user.id)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[turnos] getTurnoActivo error:', error.message)
+    return null
+  }
   return data
 }
 
