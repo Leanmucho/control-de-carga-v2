@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAuth } from '../../src/hooks/useAuth'
 import { Button } from '../../src/components/ui/Button'
 import { Input } from '../../src/components/ui/Input'
-import { colors, spacing } from '../../src/constants/theme'
+import { colors, spacing, radius } from '../../src/constants/theme'
 
 export default function LoginScreen() {
   const { signIn } = useAuth()
@@ -42,13 +42,17 @@ export default function LoginScreen() {
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+
           <View style={styles.header}>
-            <Text style={styles.logo}>📦</Text>
+            <View style={styles.logoBox}>
+              <Text style={styles.logoEmoji}>📦</Text>
+            </View>
             <Text style={styles.title}>Control de Carga</Text>
-            <Text style={styles.subtitle}>Iniciá sesión para continuar</Text>
+            <Text style={styles.subtitle}>Plataforma de gestión operativa</Text>
           </View>
 
-          <View style={styles.form}>
+          <View style={styles.formCard}>
+            <Text style={styles.formTitle}>Iniciar sesión</Text>
             <Input
               label="Email"
               value={email}
@@ -64,16 +68,17 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               placeholder="••••••••"
               secureTextEntry
-              containerStyle={{ marginTop: spacing.md }}
             />
             <Button
-              label="Iniciar sesión"
+              label="Ingresar"
               onPress={handleLogin}
               loading={loading}
               fullWidth
-              style={{ marginTop: spacing.lg }}
             />
           </View>
+
+          <Text style={styles.footer}>Control de Carga · v1.0</Text>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -83,10 +88,55 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
-  container: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg },
-  header: { alignItems: 'center', marginBottom: spacing.xl },
-  logo: { fontSize: 64, marginBottom: spacing.sm },
-  title: { color: colors.text, fontSize: 28, fontWeight: '800', marginBottom: spacing.xs },
-  subtitle: { color: colors.textMuted, fontSize: 15 },
-  form: { gap: 0 },
+  container: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  header: { alignItems: 'center', gap: 8 },
+  logoBox: {
+    width: 76,
+    height: 76,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  logoEmoji: { fontSize: 36 },
+  title: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+  },
+  subtitle: {
+    color: colors.textFaint,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  formCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  formTitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  footer: {
+    color: colors.textFaint,
+    fontSize: 11,
+    textAlign: 'center',
+  },
 })

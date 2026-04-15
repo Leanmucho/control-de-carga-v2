@@ -31,17 +31,23 @@ export function Input({ label, error, containerStyle, style, ...rest }: Props) {
 
 const styles = StyleSheet.create({
   container: { gap: 6 },
-  label: { color: colors.textMuted, fontSize: 13, fontWeight: '500' },
+  label: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     color: colors.text,
     fontSize: 15,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 44,
+    paddingVertical: 12,
+    minHeight: 48,
   },
   inputError: { borderColor: colors.danger },
   error: { color: colors.danger, fontSize: 12 },

@@ -184,6 +184,7 @@ export default function PalletsScreen() {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.modalBox}>
+                <View style={styles.dragHandle} />
                 <Text style={styles.modalTitle}>Agregar pallet</Text>
                 <TextInput
                   style={styles.numInput}
@@ -210,6 +211,7 @@ export default function PalletsScreen() {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.modalBox}>
+                <View style={styles.dragHandle} />
                 <Text style={styles.modalTitle}>Agregar varios pallets</Text>
                 <TextInput
                   style={styles.numInput}
@@ -249,6 +251,7 @@ export default function PalletsScreen() {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.modalBox}>
+                <View style={styles.dragHandle} />
                 <Text style={styles.modalTitle}>Editar pallet</Text>
                 <TextInput
                   style={styles.numInput}
@@ -275,6 +278,7 @@ export default function PalletsScreen() {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.calcBox}>
+                <View style={styles.dragHandle} />
                 <View style={styles.calcHeader}>
                   <Text style={styles.modalTitle}>Calculadora</Text>
                   <TouchableOpacity onPress={() => setShowCalc(false)}>
@@ -362,15 +366,27 @@ const styles = StyleSheet.create({
   },
   rapidaBtnText: { color: '#60a5fa', fontSize: 15, fontWeight: '700' },
   addBtns: { flexDirection: 'row', gap: spacing.sm },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
   modalBox: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: spacing.lg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
     gap: spacing.md,
+    borderTopWidth: 1,
+    borderColor: colors.border,
   },
-  modalTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.borderHigh,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+  modalTitle: { color: colors.text, fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
   numInput: {
     backgroundColor: colors.bg,
     borderWidth: 1,
@@ -385,10 +401,14 @@ const styles = StyleSheet.create({
   bulkPreview: { color: colors.primary, textAlign: 'center', fontSize: 14, fontWeight: '600' },
   calcBox: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: spacing.md,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
     gap: 4,
+    borderTopWidth: 1,
+    borderColor: colors.border,
   },
   calcHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   calcClose: { color: colors.textMuted, fontSize: 20, padding: 4 },

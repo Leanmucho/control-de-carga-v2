@@ -7,7 +7,7 @@ import { useAuth } from '../../../src/hooks/useAuth'
 import { getCargas } from '../../../src/lib/queries/cargas'
 import { Button } from '../../../src/components/ui/Button'
 import { CargaCard } from '../../../src/components/CargaCard'
-import { colors, spacing } from '../../../src/constants/theme'
+import { colors, spacing, radius } from '../../../src/constants/theme'
 import { construirResumen, guardarResumenLocal, enviarResumenPorEmail } from '../../../src/lib/turnoResumen'
 import type { Carga } from '../../../src/types/database'
 import type { ResumenTurno } from '../../../src/lib/turnoResumen'
@@ -228,20 +228,24 @@ const statBox = StyleSheet.create({
   box: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
-    backgroundColor: colors.surface,
+    paddingVertical: 12,
+    backgroundColor: colors.surfaceHigh,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  num: { color: colors.primary, fontSize: 26, fontWeight: '800' },
+  num: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+    lineHeight: 32,
+  },
   lbl: {
-    color: colors.textMuted,
-    fontSize: 10,
+    color: colors.textFaint,
+    fontSize: 9,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 2,
+    letterSpacing: 0.8,
+    marginTop: 3,
   },
 })
 
@@ -273,10 +277,10 @@ const styles = StyleSheet.create({
   noTurnoEmoji: { fontSize: 52, marginBottom: spacing.md },
   noTurnoTitle: { color: colors.text, fontSize: 20, fontWeight: '700', marginBottom: 6 },
   noTurnoSub: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
-  statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  statsRow: { flexDirection: 'row', gap: 6, marginBottom: spacing.md },
   actionsCard: {
     backgroundColor: colors.surface,
-    borderRadius: 10,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.sm,

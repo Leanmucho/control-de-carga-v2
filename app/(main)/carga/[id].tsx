@@ -243,6 +243,7 @@ export default function CargaDetailScreen() {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.modalBox}>
+                <View style={styles.dragHandle} />
                 <Text style={styles.modalTitle}>Nuevo cliente</Text>
                 <Input
                   value={nuevoCliente}
@@ -266,6 +267,7 @@ export default function CargaDetailScreen() {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.modalBox}>
+                <View style={styles.dragHandle} />
                 <Text style={styles.modalTitle}>Nota de carga</Text>
                 <TextInput
                   style={styles.textArea}
@@ -292,6 +294,7 @@ export default function CargaDetailScreen() {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.modalBox}>
+                <View style={styles.dragHandle} />
                 <Text style={styles.modalTitle}>Nueva incidencia</Text>
                 <View style={styles.tipoRow}>
                   {TIPOS_INCIDENCIA.map(t => (
@@ -373,9 +376,27 @@ const styles = StyleSheet.create({
   incHora: { color: colors.textFaint, fontSize: 12 },
   incDesc: { color: colors.textMuted, fontSize: 14, marginTop: 2 },
   notaText: { color: colors.text, fontSize: 14, lineHeight: 20 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalBox: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.lg, gap: spacing.md },
-  modalTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+  modalBox: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    gap: spacing.md,
+    borderTopWidth: 1,
+    borderColor: colors.border,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.borderHigh,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+  modalTitle: { color: colors.text, fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
   modalBtns: { flexDirection: 'row', gap: spacing.sm },
   textArea: {
     backgroundColor: colors.bg,
