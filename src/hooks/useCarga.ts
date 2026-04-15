@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getCarga, avanzarEstado, registrarLlegadaCamion, guardarNota } from '../lib/queries/cargas'
+import { checkPallet as checkPalletQuery } from '../lib/queries/pallets'
 import type { Carga } from '../types/database'
 import type { EstadoCarga } from '../constants/estados'
 
@@ -37,5 +38,30 @@ export function useCarga(id: string) {
     setCarga(prev => prev ? { ...prev, notas: nota } : prev)
   }
 
-  return { carga, loading, error, refresh, avanzar, registrarLlegada, guardarNotaCarga }
+  // Optimistic check: marca en estado local, confirma en servidor
+  async function checkPallet(palletId: string) {
+    setCarga(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        clientes_carga: prev.clientes_carga?.map(c => ({
+          ...c,
+          pallets: c.pallets?.map(p =>
+            p.id === palletId
+              ? { ...p, estado: 'cargado' as const, hora_carga: new Date().toISOString() }
+              : p
+          ),
+        })),
+      }
+    })
+    try {
+      await checkPalletQuery(palletId)
+    } catch (e) {
+      // Rollback al estado real desde el servidor
+      await refresh()
+      throw e
+    }
+  }
+
+  return { carga, loading, error, refresh, avanzar, registrarLlegada, guardarNotaCarga, checkPallet }
 }

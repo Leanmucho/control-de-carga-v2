@@ -12,14 +12,15 @@ import { Button } from '../../../../src/components/ui/Button'
 import { Card } from '../../../../src/components/ui/Card'
 import { EstadoBadge } from '../../../../src/components/EstadoBadge'
 import { Input } from '../../../../src/components/ui/Input'
-import { colors, spacing } from '../../../../src/constants/theme'
+import { colors, spacing, radius } from '../../../../src/constants/theme'
 import { TRANSICIONES, TRANSICION_LABELS, TIPOS_INCIDENCIA } from '../../../../src/constants/estados'
 import type { EstadoCarga } from '../../../../src/constants/estados'
+import type { ClienteCarga } from '../../../../src/types/database'
 
 export default function CargaDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const { carga, loading, avanzar, registrarLlegada, guardarNotaCarga, refresh } = useCarga(id)
+  const { carga, loading, avanzar, registrarLlegada, guardarNotaCarga, checkPallet, refresh } = useCarga(id)
 
   const [notaText, setNotaText] = useState('')
   const [showNota, setShowNota] = useState(false)
@@ -41,6 +42,15 @@ export default function CargaDetailScreen() {
   const siguienteEstado = TRANSICIONES[carga.estado as EstadoCarga]
   const btnLabel = TRANSICION_LABELS[carga.estado as EstadoCarga]
 
+  const total = carga.clientes_carga?.reduce((s, c) => s + (c.pallets?.length ?? 0), 0) ?? 0
+  const cargados = carga.clientes_carga?.reduce(
+    (s, c) => s + (c.pallets?.filter(p => p.estado === 'cargado').length ?? 0), 0
+  ) ?? 0
+  const pendientes = total - cargados
+  const cajas = carga.clientes_carga?.reduce(
+    (s, c) => s + (c.pallets?.reduce((s2, p) => s2 + (p.cantidad_cajas ?? 0), 0) ?? 0), 0
+  ) ?? 0
+
   async function handleAvanzar() {
     if (!siguienteEstado) return
     Alert.alert('Confirmar', btnLabel, [
@@ -53,6 +63,14 @@ export default function CargaDetailScreen() {
         },
       },
     ])
+  }
+
+  async function handleCheckPallet(palletId: string) {
+    try {
+      await checkPallet(palletId)
+    } catch (e: unknown) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo marcar el pallet')
+    }
   }
 
   async function handleAddCliente() {
@@ -107,6 +125,8 @@ export default function CargaDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
+
+        {/* Info card */}
         <Card style={styles.infoCard}>
           <Text style={styles.chofer}>{carga.chofer}</Text>
           <Text style={styles.transporte}>{carga.transporte}</Text>
@@ -131,22 +151,16 @@ export default function CargaDetailScreen() {
         </Card>
 
         {/* Stats strip */}
-        {(() => {
-          const total = carga.clientes_carga?.reduce((s, c) => s + (c.pallets?.length ?? 0), 0) ?? 0
-          const cargados = carga.clientes_carga?.reduce((s, c) => s + (c.pallets?.filter(p => p.estado === 'cargado').length ?? 0), 0) ?? 0
-          const pendientes = total - cargados
-          const cajas = carga.clientes_carga?.reduce((s, c) => s + (c.pallets?.reduce((s2, p) => s2 + (p.cantidad_cajas ?? 0), 0) ?? 0), 0) ?? 0
-          if (total === 0) return null
-          return (
-            <View style={styles.statsStrip}>
-              <MiniStat label="Total" value={total} />
-              <MiniStat label="Cargados" value={cargados} color={colors.success} />
-              <MiniStat label="Pendientes" value={pendientes} color={pendientes > 0 ? colors.warning : colors.textFaint} />
-              <MiniStat label="Cajas" value={cajas} />
-            </View>
-          )
-        })()}
+        {total > 0 && (
+          <View style={styles.statsStrip}>
+            <MiniStat label="Total" value={total} />
+            <MiniStat label="Cargados" value={cargados} color={colors.success} />
+            <MiniStat label="Pendientes" value={pendientes} color={pendientes > 0 ? colors.warning : colors.textFaint} />
+            <MiniStat label="Cajas" value={cajas} />
+          </View>
+        )}
 
+        {/* Botón de transición */}
         {siguienteEstado && (
           <Button
             label={btnLabel}
@@ -157,6 +171,7 @@ export default function CargaDetailScreen() {
           />
         )}
 
+        {/* ── Clientes + Pallets inline ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Clientes</Text>
           <Button
@@ -170,32 +185,21 @@ export default function CargaDetailScreen() {
         {(carga.clientes_carga ?? []).length === 0 ? (
           <Text style={styles.empty}>Sin clientes aún</Text>
         ) : (
-          carga.clientes_carga!.map(c => {
-            const cargados = c.pallets?.filter(p => p.estado === 'cargado').length ?? 0
-            const total = c.pallets?.length ?? 0
-            return (
-              <TouchableOpacity
-                key={c.id}
-                activeOpacity={0.75}
-                onPress={() => router.push({
-                  pathname: '/(main)/carga/[id]/pallets',
-                  params: { id, clienteId: c.id, clienteNombre: c.nombre },
-                })}
-              >
-                <Card style={styles.clienteCard}>
-                  <View style={styles.clienteRow}>
-                    <Text style={styles.clienteNombre}>{c.nombre}</Text>
-                    <Text style={[styles.clientePallets, cargados === total && total > 0 ? styles.completo : null]}>
-                      {cargados}/{total} pallets
-                    </Text>
-                  </View>
-                  <Text style={styles.clienteHint}>Tocá para ver pallets →</Text>
-                </Card>
-              </TouchableOpacity>
-            )
-          })
+          carga.clientes_carga!.map(c => (
+            <ClienteSection
+              key={c.id}
+              cliente={c}
+              cargaId={id}
+              onCheckPallet={handleCheckPallet}
+              onEditPallets={() => router.push({
+                pathname: '/(main)/carga/[id]/pallets',
+                params: { id, clienteId: c.id, clienteNombre: c.nombre },
+              })}
+            />
+          ))
         )}
 
+        {/* ── Incidencias ── */}
         <View style={[styles.sectionHeader, { marginTop: spacing.md }]}>
           <Text style={styles.sectionTitle}>Incidencias</Text>
           <Button
@@ -205,7 +209,6 @@ export default function CargaDetailScreen() {
             style={{ paddingHorizontal: 12, paddingVertical: 6 }}
           />
         </View>
-
         {(carga.incidencias ?? []).length === 0 ? (
           <Text style={styles.empty}>Sin incidencias</Text>
         ) : (
@@ -222,6 +225,7 @@ export default function CargaDetailScreen() {
           ))
         )}
 
+        {/* ── Nota ── */}
         <View style={[styles.sectionHeader, { marginTop: spacing.md }]}>
           <Text style={styles.sectionTitle}>Nota</Text>
           <Button
@@ -238,6 +242,7 @@ export default function CargaDetailScreen() {
         )}
       </ScrollView>
 
+      {/* ── Modales ── */}
       <Modal visible={showCliente} transparent animationType="slide">
         <TouchableWithoutFeedback onPress={() => setShowCliente(false)}>
           <View style={styles.modalOverlay}>
@@ -327,6 +332,88 @@ export default function CargaDetailScreen() {
   )
 }
 
+// ── Componente ClienteSection ────────────────────────────────────────────────
+
+interface ClienteSectionProps {
+  cliente: ClienteCarga
+  cargaId: string
+  onCheckPallet: (palletId: string) => Promise<void>
+  onEditPallets: () => void
+}
+
+function ClienteSection({ cliente, onCheckPallet, onEditPallets }: ClienteSectionProps) {
+  const pallets = cliente.pallets ?? []
+  const cargadosCount = pallets.filter(p => p.estado === 'cargado').length
+  const enPiso = pallets.filter(p => p.estado !== 'cargado')
+  const cargados = pallets.filter(p => p.estado === 'cargado')
+  const todosCargados = pallets.length > 0 && cargadosCount === pallets.length
+
+  return (
+    <View style={cs.container}>
+      {/* Header del cliente */}
+      <View style={cs.header}>
+        <View style={cs.headerLeft}>
+          <Text style={cs.nombre}>{cliente.nombre}</Text>
+          {pallets.length > 0 && (
+            <Text style={[cs.counter, todosCargados && cs.counterDone]}>
+              {cargadosCount}/{pallets.length} pallets
+            </Text>
+          )}
+        </View>
+        <TouchableOpacity style={cs.editBtn} onPress={onEditPallets} activeOpacity={0.7}>
+          <Text style={cs.editBtnText}>
+            {pallets.length === 0 ? '+ Agregar pallets' : 'Editar'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Pallets */}
+      {pallets.length === 0 ? (
+        <Text style={cs.sinPallets}>Sin pallets — tocá Agregar pallets para registrar</Text>
+      ) : (
+        <View style={cs.palletList}>
+          {/* EN PISO */}
+          {enPiso.map((p, i) => (
+            <TouchableOpacity
+              key={p.id}
+              style={cs.palletRow}
+              onPress={() => onCheckPallet(p.id)}
+              activeOpacity={0.7}
+            >
+              <View style={cs.circle} />
+              <View style={cs.palletInfo}>
+                <Text style={cs.palletLabel}>P{i + 1}</Text>
+                <Text style={cs.palletCajas}>{p.cantidad_cajas} cajas</Text>
+              </View>
+              <View style={cs.badgePiso}>
+                <Text style={cs.badgePisoText}>EN PISO</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+
+          {/* CARGADOS */}
+          {cargados.map((p, i) => (
+            <View key={p.id} style={[cs.palletRow, cs.palletRowDone]}>
+              <View style={[cs.circle, cs.circleDone]}>
+                <Text style={cs.tick}>✓</Text>
+              </View>
+              <View style={cs.palletInfo}>
+                <Text style={[cs.palletLabel, cs.palletLabelDone]}>P{enPiso.length + i + 1}</Text>
+                <Text style={[cs.palletCajas, cs.palletCajasDone]}>{p.cantidad_cajas} cajas</Text>
+              </View>
+              <View style={cs.badgeDone}>
+                <Text style={cs.badgeDoneText}>CARGADO</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  )
+}
+
+// ── MiniStat ─────────────────────────────────────────────────────────────────
+
 function MiniStat({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
     <View style={miniStat.box}>
@@ -335,8 +422,108 @@ function MiniStat({ label, value, color }: { label: string; value: number; color
     </View>
   )
 }
+
+// ── Estilos ───────────────────────────────────────────────────────────────────
+
+const cs = StyleSheet.create({
+  container: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerLeft: { flex: 1, gap: 2 },
+  nombre: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  counter: { color: colors.textFaint, fontSize: 12 },
+  counterDone: { color: colors.success },
+  editBtn: {
+    backgroundColor: colors.bg,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  editBtnText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
+  sinPallets: {
+    color: colors.textFaint,
+    fontSize: 13,
+    padding: spacing.md,
+    textAlign: 'center',
+  },
+  palletList: { paddingVertical: 4 },
+  palletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    gap: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  palletRowDone: {
+    backgroundColor: '#052e1620',
+  },
+  circle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: colors.borderHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  circleDone: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  tick: { color: '#fff', fontSize: 13, fontWeight: '700', lineHeight: 16 },
+  palletInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  palletLabel: { color: colors.textFaint, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  palletLabelDone: { color: '#4ade8060' },
+  palletCajas: { color: colors.text, fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
+  palletCajasDone: { color: '#4ade80' },
+  badgePiso: {
+    backgroundColor: '#0c1f36',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#1e3a5f',
+  },
+  badgePisoText: { color: '#60a5fa', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+  badgeDone: {
+    backgroundColor: '#052e16',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#166534',
+  },
+  badgeDoneText: { color: '#4ade80', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+})
+
 const miniStat = StyleSheet.create({
-  box: { flex: 1, alignItems: 'center', paddingVertical: 8, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
+  box: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   num: { color: colors.primary, fontSize: 20, fontWeight: '800' },
   lbl: { color: colors.textMuted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 1 },
 })
@@ -361,15 +548,21 @@ const styles = StyleSheet.create({
   meta: { color: colors.textFaint, fontSize: 13 },
   tiempos: { flexDirection: 'row', marginTop: spacing.sm, gap: spacing.sm },
   tiempo: { color: colors.success, fontSize: 13 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  sectionTitle: { color: colors.textMuted, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statsStrip: { flexDirection: 'row', gap: 6, marginBottom: spacing.md },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  sectionTitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   empty: { color: colors.textFaint, fontSize: 14, marginBottom: spacing.sm },
-  clienteCard: { marginBottom: 6 },
-  clienteRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  clienteNombre: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  clientePallets: { color: colors.textMuted, fontSize: 13 },
-  completo: { color: colors.success },
-  clienteHint: { color: colors.textFaint, fontSize: 11, marginTop: 2 },
   incCard: { marginBottom: 6 },
   incRow: { flexDirection: 'row', justifyContent: 'space-between' },
   incTipo: { color: colors.warning, fontSize: 13, fontWeight: '700' },
@@ -410,9 +603,15 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   tipoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  tipoBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  tipoBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   tipoBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   tipoBtnText: { color: colors.textMuted, fontSize: 12 },
   tipoBtnTextActive: { color: '#fff', fontWeight: '600' },
-  statsStrip: { flexDirection: 'row', gap: 6, marginBottom: spacing.md },
 })
