@@ -1,8 +1,7 @@
 import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
-import { Card } from './ui/Card'
 import { EstadoBadge } from './EstadoBadge'
-import { colors, spacing } from '../constants/theme'
+import { colors, spacing, ESTADO_COLORS } from '../constants/theme'
 import type { Carga } from '../types/database'
 import type { EstadoCarga } from '../constants/estados'
 
@@ -18,51 +17,105 @@ export function CargaCard({ carga, onPress }: Props) {
   const cargados = carga.clientes_carga?.reduce(
     (sum, c) => sum + (c.pallets?.filter(p => p.estado === 'cargado').length ?? 0), 0
   ) ?? 0
+  const totalCajas = carga.clientes_carga?.reduce(
+    (sum, c) => sum + (c.pallets?.reduce((s, p) => s + (p.cantidad_cajas ?? 0), 0) ?? 0), 0
+  ) ?? 0
+  const incCount = carga.incidencias?.length ?? 0
+  const estadoColor = ESTADO_COLORS[carga.estado as EstadoCarga]?.text ?? colors.textMuted
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
-      <Card style={styles.card}>
-        <View style={styles.header}>
-          <View style={styles.info}>
-            <Text style={styles.chofer}>{carga.chofer}</Text>
-            <Text style={styles.transporte}>{carga.transporte}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={styles.wrapper}>
+      <View style={[styles.accent, { backgroundColor: estadoColor }]} />
+      <View style={styles.body}>
+        {/* Fila principal */}
+        <View style={styles.mainRow}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.chofer} numberOfLines={1}>{carga.chofer}</Text>
+            <Text style={styles.transporte} numberOfLines={1}>{carga.transporte}</Text>
           </View>
           <EstadoBadge estado={carga.estado as EstadoCarga} size="sm" />
         </View>
 
-        <View style={styles.row}>
-          {carga.clarkista_nombre ? (
-            <Text style={styles.meta}>Clarkista: {carga.clarkista_nombre}</Text>
-          ) : null}
+        {/* Fila de stats */}
+        <View style={styles.statsRow}>
+          <StatChip
+            label="Pallets"
+            value={`${cargados}/${totalPallets}`}
+            highlight={cargados === totalPallets && totalPallets > 0}
+          />
+          <StatChip label="Cajas" value={String(totalCajas)} />
           {carga.numero_remito ? (
-            <Text style={styles.meta}>Remito: {carga.numero_remito}</Text>
+            <StatChip label="Remito" value={carga.numero_remito} />
+          ) : null}
+          {incCount > 0 ? (
+            <View style={styles.incBadge}>
+              <Text style={styles.incText}>⚠ {incCount}</Text>
+            </View>
           ) : null}
         </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            {carga.clientes_carga?.length ?? 0} clientes · {cargados}/{totalPallets} pallets
-          </Text>
-          {(carga.incidencias?.length ?? 0) > 0 && (
-            <Text style={styles.incidencia}>
-              ⚠ {carga.incidencias!.length} incidencia{carga.incidencias!.length > 1 ? 's' : ''}
-            </Text>
-          )}
-        </View>
-      </Card>
+      </View>
     </TouchableOpacity>
   )
 }
 
+function StatChip({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <View style={styles.chip}>
+      <Text style={styles.chipLabel}>{label}</Text>
+      <Text style={[styles.chipValue, highlight && styles.chipHighlight]}>{value}</Text>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
-  card: { marginBottom: spacing.sm },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
-  info: { flex: 1 },
-  chofer: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  transporte: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
-  row: { flexDirection: 'row', gap: 12, marginBottom: 6 },
-  meta: { color: colors.textFaint, fontSize: 12 },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  footerText: { color: colors.textMuted, fontSize: 13 },
-  incidencia: { color: colors.warning, fontSize: 12, fontWeight: '600' },
+  wrapper: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  accent: {
+    width: 4,
+  },
+  body: {
+    flex: 1,
+    padding: spacing.sm + 4,
+  },
+  mainRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  titleBlock: { flex: 1, paddingRight: 8 },
+  chofer: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  transporte: { color: colors.textMuted, fontSize: 12, marginTop: 1 },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.bg,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  chipLabel: { color: colors.textFaint, fontSize: 11 },
+  chipValue: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  chipHighlight: { color: colors.success },
+  incBadge: {
+    backgroundColor: '#451a03',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  incText: { color: colors.warning, fontSize: 11, fontWeight: '700' },
 })

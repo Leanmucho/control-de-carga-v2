@@ -130,6 +130,23 @@ export default function CargaDetailScreen() {
           </View>
         </Card>
 
+        {/* Stats strip */}
+        {(() => {
+          const total = carga.clientes_carga?.reduce((s, c) => s + (c.pallets?.length ?? 0), 0) ?? 0
+          const cargados = carga.clientes_carga?.reduce((s, c) => s + (c.pallets?.filter(p => p.estado === 'cargado').length ?? 0), 0) ?? 0
+          const pendientes = total - cargados
+          const cajas = carga.clientes_carga?.reduce((s, c) => s + (c.pallets?.reduce((s2, p) => s2 + (p.cantidad_cajas ?? 0), 0) ?? 0), 0) ?? 0
+          if (total === 0) return null
+          return (
+            <View style={styles.statsStrip}>
+              <MiniStat label="Total" value={total} />
+              <MiniStat label="Cargados" value={cargados} color={colors.success} />
+              <MiniStat label="Pendientes" value={pendientes} color={pendientes > 0 ? colors.warning : colors.textFaint} />
+              <MiniStat label="Cajas" value={cajas} />
+            </View>
+          )
+        })()}
+
         {siguienteEstado && (
           <Button
             label={btnLabel}
@@ -295,6 +312,20 @@ export default function CargaDetailScreen() {
   )
 }
 
+function MiniStat({ label, value, color }: { label: string; value: number; color?: string }) {
+  return (
+    <View style={miniStat.box}>
+      <Text style={[miniStat.num, color ? { color } : null]}>{value}</Text>
+      <Text style={miniStat.lbl}>{label}</Text>
+    </View>
+  )
+}
+const miniStat = StyleSheet.create({
+  box: { flex: 1, alignItems: 'center', paddingVertical: 8, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
+  num: { color: colors.primary, fontSize: 20, fontWeight: '800' },
+  lbl: { color: colors.textMuted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 1 },
+})
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
@@ -350,4 +381,5 @@ const styles = StyleSheet.create({
   tipoBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   tipoBtnText: { color: colors.textMuted, fontSize: 12 },
   tipoBtnTextActive: { color: '#fff', fontWeight: '600' },
+  statsStrip: { flexDirection: 'row', gap: 6, marginBottom: spacing.md },
 })

@@ -1,19 +1,14 @@
-import React, { useState } from 'react'
-import {
-  View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator,
-} from 'react-native'
+import React, { useState, useCallback } from 'react'
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { useTurnoActivo } from '../../../src/hooks/useTurnoActivo'
 import { useAuth } from '../../../src/hooks/useAuth'
 import { getCargas } from '../../../src/lib/queries/cargas'
 import { Button } from '../../../src/components/ui/Button'
-import { Card } from '../../../src/components/ui/Card'
 import { CargaCard } from '../../../src/components/CargaCard'
 import { colors, spacing } from '../../../src/constants/theme'
 import type { Carga } from '../../../src/types/database'
-import { useFocusEffect } from 'expo-router'
-import { useCallback } from 'react'
 
 export default function TurnoScreen() {
   const { turno, loading, iniciar, finalizar } = useTurnoActivo()
@@ -26,44 +21,41 @@ export default function TurnoScreen() {
     useCallback(() => {
       if (turno?.id) {
         setCargasLoading(true)
-        getCargas(turno.id)
-          .then(setCargas)
-          .finally(() => setCargasLoading(false))
+        getCargas(turno.id).then(setCargas).finally(() => setCargasLoading(false))
       } else {
         setCargas([])
       }
     }, [turno?.id])
   )
 
+  const totalPallets = cargas.reduce(
+    (s, c) => s + (c.clientes_carga?.reduce((s2, cl) => s2 + (cl.pallets?.length ?? 0), 0) ?? 0), 0
+  )
+  const totalCajas = cargas.reduce(
+    (s, c) => s + (c.clientes_carga?.reduce(
+      (s2, cl) => s2 + (cl.pallets?.reduce((s3, p) => s3 + (p.cantidad_cajas ?? 0), 0) ?? 0), 0
+    ) ?? 0), 0
+  )
+  const totalInc = cargas.reduce((s, c) => s + (c.incidencias?.length ?? 0), 0)
+
   async function handleIniciarTurno() {
     if (!perfil) return
-    try {
-      await iniciar(perfil.id)
-    } catch (e: unknown) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo iniciar el turno')
-    }
+    try { await iniciar(perfil.id) }
+    catch (e: unknown) { Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo iniciar') }
   }
 
   async function handleFinalizarTurno() {
     if (!turno) return
-    Alert.alert(
-      'Finalizar turno',
-      '¿Estás seguro? Se cerrará el turno activo.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Finalizar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await finalizar(turno.id)
-            } catch (e: unknown) {
-              Alert.alert('Error', e instanceof Error ? e.message : 'Error al finalizar turno')
-            }
-          },
+    Alert.alert('Finalizar turno', 'Se cerrara el turno activo.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Finalizar', style: 'destructive',
+        onPress: async () => {
+          try { await finalizar(turno.id) }
+          catch (e: unknown) { Alert.alert('Error', e instanceof Error ? e.message : 'Error') }
         },
-      ]
-    )
+      },
+    ])
   }
 
   if (loading) {
@@ -77,90 +69,124 @@ export default function TurnoScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.topBar}>
-        <Text style={styles.appTitle}>Control de Carga</Text>
+        <View>
+          <Text style={styles.appTitle}>Control de Carga</Text>
+          {turno && (
+            <Text style={styles.topSub}>
+              {new Date(turno.fecha_inicio).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+            </Text>
+          )}
+        </View>
         <Button
           label={perfil?.nombre ?? 'Salir'}
-          onPress={() =>
-            Alert.alert('Cerrar sesión', '¿Salir?', [
-              { text: 'Cancelar', style: 'cancel' },
-              { text: 'Salir', onPress: signOut, style: 'destructive' },
-            ])
-          }
+          onPress={() => Alert.alert('Cerrar sesion', 'Salir?', [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Salir', onPress: signOut, style: 'destructive' },
+          ])}
           variant="ghost"
           style={{ paddingHorizontal: 8 }}
         />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {!turno ? (
-          <View style={styles.noTurno}>
-            <Text style={styles.noTurnoEmoji}>🌙</Text>
-            <Text style={styles.noTurnoText}>No hay turno activo</Text>
-            <Text style={styles.noTurnoSub}>
-              Iniciá un turno para comenzar a registrar cargas
-            </Text>
+      {!turno ? (
+        <View style={styles.noTurnoWrap}>
+          <View style={styles.noTurnoCard}>
+            <Text style={styles.noTurnoEmoji}>📦</Text>
+            <Text style={styles.noTurnoTitle}>Iniciar nuevo turno</Text>
+            <Text style={styles.noTurnoSub}>Registra las cargas del turno de trabajo.</Text>
             <Button
-              label="Iniciar turno"
+              label="Iniciar Turno"
               onPress={handleIniciarTurno}
-              style={{ marginTop: spacing.lg, paddingHorizontal: 32 }}
+              fullWidth
+              style={{ marginTop: spacing.lg }}
             />
           </View>
-        ) : (
-          <>
-            <Card style={styles.turnoCard}>
-              <View style={styles.turnoHeader}>
-                <View>
-                  <Text style={styles.turnoLabel}>Turno activo</Text>
-                  <Text style={styles.turnoControlador}>
-                    {turno.controlador?.nombre ?? perfil?.nombre}
-                  </Text>
-                  <Text style={styles.turnoFecha}>
-                    {new Date(turno.fecha_inicio).toLocaleString('es-AR', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
-                  </Text>
-                </View>
-                <Text style={styles.turnoCargas}>
-                  {cargas.length} carga{cargas.length !== 1 ? 's' : ''}
-                </Text>
-              </View>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scroll}>
+
+          {cargas.length > 0 && (
+            <View style={styles.statsRow}>
+              <StatBox value={cargas.length} label="Cargas" />
+              <StatBox value={totalPallets} label="Pallets" />
+              <StatBox value={totalCajas} label="Cajas" />
+              <StatBox value={totalInc} label="Incid." color={totalInc > 0 ? colors.danger : undefined} />
+            </View>
+          )}
+
+          <View style={styles.actionsCard}>
+            <View style={styles.actionsRow}>
               <Button
-                label="Nueva carga"
+                label="+ Nueva Carga"
                 onPress={() => router.push('/(main)/carga/nueva')}
-                fullWidth
-                style={{ marginTop: spacing.md }}
+                style={{ flex: 1 }}
               />
               <Button
-                label="Finalizar turno"
+                label="Finalizar"
                 onPress={handleFinalizarTurno}
                 variant="danger"
-                fullWidth
-                style={{ marginTop: spacing.sm }}
+                style={{ flex: 1 }}
               />
-            </Card>
+            </View>
+          </View>
 
+          <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Cargas del turno</Text>
+            {cargas.length > 0 && <Text style={styles.sectionCount}>{cargas.length}</Text>}
+          </View>
 
-            {cargasLoading ? (
-              <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
-            ) : cargas.length === 0 ? (
-              <Text style={styles.empty}>Sin cargas aún</Text>
-            ) : (
-              cargas.map(c => (
-                <CargaCard
-                  key={c.id}
-                  carga={c}
-                  onPress={() => router.push({ pathname: '/(main)/carga/[id]/index', params: { id: c.id } })}
-                />
-              ))
-            )}
-          </>
-        )}
-      </ScrollView>
+          {cargasLoading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+          ) : cargas.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyEmoji}>🚛</Text>
+              <Text style={styles.emptyText}>Sin cargas registradas aun</Text>
+              <Text style={styles.emptySub}>Usa el boton de arriba para empezar</Text>
+            </View>
+          ) : (
+            cargas.map(c => (
+              <CargaCard
+                key={c.id}
+                carga={c}
+                onPress={() => router.push({ pathname: '/(main)/carga/[id]/index', params: { id: c.id } })}
+              />
+            ))
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   )
 }
+
+function StatBox({ value, label, color }: { value: number; label: string; color?: string }) {
+  return (
+    <View style={statBox.box}>
+      <Text style={[statBox.num, color ? { color } : null]}>{value}</Text>
+      <Text style={statBox.lbl}>{label}</Text>
+    </View>
+  )
+}
+
+const statBox = StyleSheet.create({
+  box: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  num: { color: colors.primary, fontSize: 26, fontWeight: '800' },
+  lbl: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+})
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
@@ -173,19 +199,58 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  appTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
-  scroll: { padding: spacing.md, paddingBottom: 32 },
-  noTurno: { alignItems: 'center', paddingTop: 80 },
-  noTurnoEmoji: { fontSize: 64, marginBottom: spacing.md },
-  noTurnoText: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  noTurnoSub: { color: colors.textMuted, fontSize: 14, textAlign: 'center', marginTop: 8 },
-  turnoCard: { marginBottom: spacing.md },
-  turnoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  turnoLabel: { color: colors.success, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
-  turnoControlador: { color: colors.text, fontSize: 18, fontWeight: '700' },
-  turnoFecha: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
-  turnoCargas: { color: colors.primary, fontSize: 24, fontWeight: '800' },
-  sectionTitle: { color: colors.textMuted, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', marginBottom: spacing.sm, letterSpacing: 0.5 },
-  empty: { color: colors.textFaint, textAlign: 'center', marginTop: 32, fontSize: 15 },
+  appTitle: { color: colors.text, fontSize: 17, fontWeight: '800', letterSpacing: 0.3 },
+  topSub: { color: colors.textFaint, fontSize: 11, marginTop: 1 },
+  scroll: { padding: spacing.md, paddingBottom: 40 },
+  noTurnoWrap: { flex: 1, justifyContent: 'center', padding: spacing.lg },
+  noTurnoCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg + 8,
+    alignItems: 'center',
+  },
+  noTurnoEmoji: { fontSize: 52, marginBottom: spacing.md },
+  noTurnoTitle: { color: colors.text, fontSize: 20, fontWeight: '700', marginBottom: 6 },
+  noTurnoSub: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
+  statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  actionsCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  actionsRow: { flexDirection: 'row', gap: spacing.sm },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  sectionTitle: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  sectionCount: {
+    color: colors.textFaint,
+    fontSize: 12,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyBox: { alignItems: 'center', paddingVertical: 40 },
+  emptyEmoji: { fontSize: 40, marginBottom: spacing.sm },
+  emptyText: { color: colors.textMuted, fontSize: 15, fontWeight: '600' },
+  emptySub: { color: colors.textFaint, fontSize: 13, marginTop: 4 },
 })
