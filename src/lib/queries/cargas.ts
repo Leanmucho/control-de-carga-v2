@@ -82,6 +82,24 @@ export async function eliminarCarga(cargaId: string): Promise<void> {
   if (error) throw new Error(`Error al eliminar carga: ${error.message}`)
 }
 
+/**
+ * Trae TODAS las cargas del usuario con detalle completo para el historial.
+ * Se cachea localmente — no llamar en cada render, solo en useFocusEffect.
+ */
+export async function getHistorialCompleto(): Promise<Carga[]> {
+  const { data, error } = await supabase
+    .from('cargas')
+    .select(`
+      *,
+      clientes_carga(id, nombre, pallets_hoja_ruta, cajas_hoja_ruta, pallets(*)),
+      incidencias(*)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(500)
+  if (error) throw error
+  return data ?? []
+}
+
 export async function buscarCargas(filtros: {
   chofer?: string
   transporte?: string
