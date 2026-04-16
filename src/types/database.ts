@@ -41,6 +41,8 @@ export interface ClienteCarga {
   carga_id: string
   nombre: string
   orden: number
+  pallets_hoja_ruta: number | null
+  cajas_hoja_ruta: number | null
   // joins
   pallets?: Pallet[]
 }

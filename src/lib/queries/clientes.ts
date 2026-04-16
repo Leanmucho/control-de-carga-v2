@@ -5,6 +5,8 @@ export async function addCliente(payload: {
   carga_id: string
   nombre: string
   orden: number
+  pallets_hoja_ruta?: number | null
+  cajas_hoja_ruta?: number | null
 }): Promise<ClienteCarga> {
   const { data, error } = await supabase
     .from('clientes_carga')
@@ -19,6 +21,18 @@ export async function deleteCliente(id: string): Promise<void> {
   const { error } = await supabase
     .from('clientes_carga')
     .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function updateClienteHojaRuta(
+  id: string,
+  pallets_hoja_ruta: number | null,
+  cajas_hoja_ruta: number | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from('clientes_carga')
+    .update({ pallets_hoja_ruta, cajas_hoja_ruta })
     .eq('id', id)
   if (error) throw error
 }

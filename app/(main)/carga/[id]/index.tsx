@@ -1,13 +1,13 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Alert, TextInput, Modal,
-  TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator,
+  TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, LayoutAnimation, Platform,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'
 import { useCallback } from 'react'
 import { useCarga } from '../../../../src/hooks/useCarga'
-import { addCliente } from '../../../../src/lib/queries/clientes'
+import { addCliente, updateClienteHojaRuta } from '../../../../src/lib/queries/clientes'
 import { addIncidencia } from '../../../../src/lib/queries/incidencias'
 import { eliminarCarga } from '../../../../src/lib/queries/cargas'
 import { Button } from '../../../../src/components/ui/Button'
@@ -32,6 +32,12 @@ export default function CargaDetailScreen() {
   const [showCliente, setShowCliente] = useState(false)
   const [showIncidencia, setShowIncidencia] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState('')
+  const [nuevoPallets, setNuevoPallets] = useState('')
+  const [nuevoCajas, setNuevoCajas] = useState('')
+  // Editar hoja de ruta de cliente existente
+  const [editHojaCliente, setEditHojaCliente] = useState<ClienteCarga | null>(null)
+  const [editHojaPallets, setEditHojaPallets] = useState('')
+  const [editHojaCajas, setEditHojaCajas] = useState('')
   const [incTipo, setIncTipo] = useState<string>(TIPOS_INCIDENCIA[0])
   const [incDesc, setIncDesc] = useState('')
   const [saving, setSaving] = useState(false)
@@ -73,6 +79,14 @@ export default function CargaDetailScreen() {
   }
 
   async function handleCheckPallet(palletId: string) {
+    if (Platform.OS !== 'web') {
+      LayoutAnimation.configureNext({
+        duration: 300,
+        create: { type: 'easeInEaseOut', property: 'opacity' },
+        update: { type: 'spring', springDamping: 0.85 },
+        delete: { type: 'easeInEaseOut', property: 'opacity' },
+      })
+    }
     try {
       await checkPallet(palletId)
     } catch (e: unknown) {
@@ -100,8 +114,12 @@ export default function CargaDetailScreen() {
         carga_id: id,
         nombre: nuevoCliente.trim(),
         orden: (carga?.clientes_carga?.length ?? 0) + 1,
+        pallets_hoja_ruta: nuevoPallets ? parseInt(nuevoPallets, 10) : null,
+        cajas_hoja_ruta: nuevoCajas ? parseInt(nuevoCajas, 10) : null,
       })
       setNuevoCliente('')
+      setNuevoPallets('')
+      setNuevoCajas('')
       setShowCliente(false)
       await refresh()
     } catch (e: unknown) {
@@ -109,6 +127,30 @@ export default function CargaDetailScreen() {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleGuardarHojaRuta() {
+    if (!editHojaCliente) return
+    setSaving(true)
+    try {
+      await updateClienteHojaRuta(
+        editHojaCliente.id,
+        editHojaPallets ? parseInt(editHojaPallets, 10) : null,
+        editHojaCajas ? parseInt(editHojaCajas, 10) : null,
+      )
+      setEditHojaCliente(null)
+      await refresh()
+    } catch (e: unknown) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function abrirEditHoja(c: ClienteCarga) {
+    setEditHojaCliente(c)
+    setEditHojaPallets(c.pallets_hoja_ruta != null ? String(c.pallets_hoja_ruta) : '')
+    setEditHojaCajas(c.cajas_hoja_ruta != null ? String(c.cajas_hoja_ruta) : '')
   }
 
   async function handleGuardarNota() {
@@ -213,18 +255,25 @@ export default function CargaDetailScreen() {
         {(carga.clientes_carga ?? []).length === 0 ? (
           <Text style={styles.empty}>Sin clientes aún</Text>
         ) : (
-          carga.clientes_carga!.map(c => (
-            <ClienteSection
-              key={c.id}
-              cliente={c}
-              cargaId={id}
-              onCheckPallet={handleCheckPallet}
-              onEditPallets={() => router.push({
-                pathname: '/(main)/carga/[id]/pallets',
-                params: { id, clienteId: c.id, clienteNombre: c.nombre },
-              })}
-            />
-          ))
+          [...carga.clientes_carga!]
+            .sort((a, b) => {
+              const aDone = (a.pallets?.length ?? 0) > 0 && a.pallets!.every(p => p.estado === 'cargado') ? 1 : 0
+              const bDone = (b.pallets?.length ?? 0) > 0 && b.pallets!.every(p => p.estado === 'cargado') ? 1 : 0
+              return aDone - bDone
+            })
+            .map(c => (
+              <ClienteSection
+                key={c.id}
+                cliente={c}
+                cargaId={id}
+                onCheckPallet={handleCheckPallet}
+                onEditHoja={() => abrirEditHoja(c)}
+                onEditPallets={() => router.push({
+                  pathname: '/(main)/carga/[id]/pallets',
+                  params: { id, clienteId: c.id, clienteNombre: c.nombre },
+                })}
+              />
+            ))
         )}
 
         {/* ── Incidencias ── */}
@@ -303,9 +352,62 @@ export default function CargaDetailScreen() {
                   autoCapitalize="words"
                   autoFocus
                 />
+                <Text style={styles.modalSubtitle}>Hoja de ruta (opcional)</Text>
+                <View style={styles.modalRow}>
+                  <Input
+                    value={nuevoPallets}
+                    onChangeText={setNuevoPallets}
+                    placeholder="Pallets"
+                    keyboardType="numeric"
+                    containerStyle={{ flex: 1 }}
+                  />
+                  <Input
+                    value={nuevoCajas}
+                    onChangeText={setNuevoCajas}
+                    placeholder="Cajas"
+                    keyboardType="numeric"
+                    containerStyle={{ flex: 1 }}
+                  />
+                </View>
                 <View style={styles.modalBtns}>
                   <Button label="Cancelar" onPress={() => setShowCliente(false)} variant="secondary" style={{ flex: 1 }} />
                   <Button label="Agregar" onPress={handleAddCliente} loading={saving} style={{ flex: 1 }} />
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Modal editar hoja de ruta */}
+      <Modal visible={!!editHojaCliente} transparent animationType="slide">
+        <TouchableWithoutFeedback onPress={() => setEditHojaCliente(null)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalBox}>
+                <View style={styles.dragHandle} />
+                <Text style={styles.modalTitle}>Hoja de ruta — {editHojaCliente?.nombre}</Text>
+                <Text style={styles.modalSubtitle}>Ingresá los valores de la hoja de ruta para verificar contra lo cargado</Text>
+                <View style={styles.modalRow}>
+                  <Input
+                    value={editHojaPallets}
+                    onChangeText={setEditHojaPallets}
+                    placeholder="Pallets esperados"
+                    keyboardType="numeric"
+                    containerStyle={{ flex: 1 }}
+                    autoFocus
+                  />
+                  <Input
+                    value={editHojaCajas}
+                    onChangeText={setEditHojaCajas}
+                    placeholder="Cajas esperadas"
+                    keyboardType="numeric"
+                    containerStyle={{ flex: 1 }}
+                  />
+                </View>
+                <View style={styles.modalBtns}>
+                  <Button label="Cancelar" onPress={() => setEditHojaCliente(null)} variant="secondary" style={{ flex: 1 }} />
+                  <Button label="Guardar" onPress={handleGuardarHojaRuta} loading={saving} style={{ flex: 1 }} />
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -384,15 +486,35 @@ interface ClienteSectionProps {
   cliente: ClienteCarga
   cargaId: string
   onCheckPallet: (palletId: string) => Promise<void>
+  onEditHoja: () => void
   onEditPallets: () => void
 }
 
-function ClienteSection({ cliente, onCheckPallet, onEditPallets }: ClienteSectionProps) {
-  const pallets = cliente.pallets ?? []
-  const cargadosCount = pallets.filter(p => p.estado === 'cargado').length
-  const enPiso = pallets.filter(p => p.estado !== 'cargado')
-  const cargados = pallets.filter(p => p.estado === 'cargado')
-  const todosCargados = pallets.length > 0 && cargadosCount === pallets.length
+function ClienteSection({ cliente, onCheckPallet, onEditHoja, onEditPallets }: ClienteSectionProps) {
+  const allPallets = cliente.pallets ?? []
+  const cargadosCount = allPallets.filter(p => p.estado === 'cargado').length
+  const todosCargados = allPallets.length > 0 && cargadosCount === allPallets.length
+
+  // Ordenar: pendientes arriba, cargados abajo (orden estable dentro de cada grupo)
+  const sorted = [...allPallets].sort((a, b) => {
+    const aVal = a.estado === 'cargado' ? 1 : 0
+    const bVal = b.estado === 'cargado' ? 1 : 0
+    return aVal - bVal
+  })
+
+  async function handlePress(palletId: string) {
+    await onCheckPallet(palletId)
+  }
+
+  const { pallets_hoja_ruta: pHoja, cajas_hoja_ruta: cHoja } = cliente
+  const realPallets = allPallets.length
+  const realCajas = allPallets.reduce((s, p) => s + (p.cantidad_cajas ?? 0), 0)
+
+  // Comparación hoja de ruta vs real
+  const palletsOk = pHoja == null || realPallets === pHoja
+  const cajasOk   = cHoja == null || realCajas === cHoja
+  const hojaOk    = palletsOk && cajasOk
+  const hojaSet   = pHoja != null || cHoja != null
 
   return (
     <View style={cs.container}>
@@ -400,58 +522,98 @@ function ClienteSection({ cliente, onCheckPallet, onEditPallets }: ClienteSectio
       <View style={cs.header}>
         <View style={cs.headerLeft}>
           <Text style={cs.nombre}>{cliente.nombre}</Text>
-          {pallets.length > 0 && (
+          {allPallets.length > 0 && (
             <Text style={[cs.counter, todosCargados && cs.counterDone]}>
-              {cargadosCount}/{pallets.length} pallets
+              {cargadosCount}/{allPallets.length} pallets
             </Text>
           )}
         </View>
         <TouchableOpacity style={cs.editBtn} onPress={onEditPallets} activeOpacity={0.7}>
           <Text style={cs.editBtnText}>
-            {pallets.length === 0 ? '+ Agregar pallets' : 'Editar'}
+            {allPallets.length === 0 ? '+ Pallets' : 'Editar'}
           </Text>
         </TouchableOpacity>
       </View>
 
+      {/* Hoja de ruta — siempre visible */}
+      <TouchableOpacity
+        style={[cs.hojaRow, hojaSet && !hojaOk && cs.hojaRowWarn]}
+        onPress={onEditHoja}
+        activeOpacity={0.75}
+      >
+        {!hojaSet ? (
+          <>
+            <Text style={cs.hojaIconEmpty}>📋</Text>
+            <Text style={cs.hojaEmpty}>Tocá para ingresar hoja de ruta (pallets y cajas esperados)</Text>
+          </>
+        ) : (
+          <>
+            <Text style={cs.hojaIcon}>{hojaOk ? '✓' : '⚠'}</Text>
+            <View style={cs.hojaInfo}>
+              {pHoja != null && (
+                <Text style={[cs.hojaText, !palletsOk && cs.hojaTextWarn]}>
+                  {'Pallets: '}
+                  <Text style={[cs.hojaVal, !palletsOk && cs.hojaTextWarn]}>{realPallets}</Text>
+                  <Text style={cs.hojaEsp}> / {pHoja} esperados</Text>
+                  {palletsOk && <Text style={cs.hojaCheck}> ✓</Text>}
+                </Text>
+              )}
+              {cHoja != null && (
+                <Text style={[cs.hojaText, !cajasOk && cs.hojaTextWarn]}>
+                  {'Cajas: '}
+                  <Text style={[cs.hojaVal, !cajasOk && cs.hojaTextWarn]}>{realCajas}</Text>
+                  <Text style={cs.hojaEsp}> / {cHoja} esperadas</Text>
+                  {cajasOk && <Text style={cs.hojaCheck}> ✓</Text>}
+                </Text>
+              )}
+            </View>
+          </>
+        )}
+      </TouchableOpacity>
+
       {/* Pallets */}
-      {pallets.length === 0 ? (
+      {allPallets.length === 0 ? (
         <Text style={cs.sinPallets}>Sin pallets — tocá Agregar pallets para registrar</Text>
       ) : (
         <View style={cs.palletList}>
-          {/* EN PISO */}
-          {enPiso.map((p, i) => (
-            <TouchableOpacity
-              key={p.id}
-              style={cs.palletRow}
-              onPress={() => onCheckPallet(p.id)}
-              activeOpacity={0.7}
-            >
-              <View style={cs.circle} />
-              <View style={cs.palletInfo}>
-                <Text style={cs.palletLabel}>P{i + 1}</Text>
-                <Text style={cs.palletCajas}>{p.cantidad_cajas} cajas</Text>
+          {sorted.map((p, i) => {
+            const cargado = p.estado === 'cargado'
+            return cargado ? (
+              <View key={p.id} style={[cs.palletRow, cs.palletRowDone]}>
+                <View style={[cs.circle, cs.circleDone]}>
+                  <Text style={cs.tick}>✓</Text>
+                </View>
+                <View style={cs.palletInfo}>
+                  <Text style={[cs.palletLabel, cs.palletLabelDone]}>P{i + 1}</Text>
+                  <Text style={[cs.palletCajas, cs.palletCajasDone]}>{p.cantidad_cajas} cajas</Text>
+                  {p.hora_carga && (
+                    <Text style={cs.horaLabel}>
+                      {new Date(p.hora_carga).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  )}
+                </View>
+                <View style={cs.badgeDone}>
+                  <Text style={cs.badgeDoneText}>CARGADO</Text>
+                </View>
               </View>
-              <View style={cs.badgePiso}>
-                <Text style={cs.badgePisoText}>EN PISO</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-
-          {/* CARGADOS */}
-          {cargados.map((p, i) => (
-            <View key={p.id} style={[cs.palletRow, cs.palletRowDone]}>
-              <View style={[cs.circle, cs.circleDone]}>
-                <Text style={cs.tick}>✓</Text>
-              </View>
-              <View style={cs.palletInfo}>
-                <Text style={[cs.palletLabel, cs.palletLabelDone]}>P{enPiso.length + i + 1}</Text>
-                <Text style={[cs.palletCajas, cs.palletCajasDone]}>{p.cantidad_cajas} cajas</Text>
-              </View>
-              <View style={cs.badgeDone}>
-                <Text style={cs.badgeDoneText}>CARGADO</Text>
-              </View>
-            </View>
-          ))}
+            ) : (
+              <TouchableOpacity
+                key={p.id}
+                style={cs.palletRow}
+                onPress={() => handlePress(p.id)}
+                activeOpacity={0.7}
+              >
+                <View style={cs.circle} />
+                <View style={cs.palletInfo}>
+                  <Text style={cs.palletLabel}>P{i + 1}</Text>
+                  <Text style={cs.palletCajas}>{p.cantidad_cajas} cajas</Text>
+                </View>
+                <View style={cs.badgePiso}>
+                  <Text style={cs.badgePisoText}>EN PISO</Text>
+                </View>
+              </TouchableOpacity>
+            )
+          })}
         </View>
       )}
     </View>
@@ -490,9 +652,21 @@ const cs = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerLeft: { flex: 1, gap: 2 },
+  headerRight: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   nombre: { color: colors.text, fontSize: 15, fontWeight: '700' },
   counter: { color: colors.textFaint, fontSize: 12 },
   counterDone: { color: colors.success },
+  hojaBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hojaBtnText: { fontSize: 14 },
   editBtn: {
     backgroundColor: colors.bg,
     borderRadius: 6,
@@ -502,6 +676,29 @@ const cs = StyleSheet.create({
     paddingVertical: 5,
   },
   editBtnText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
+  hojaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+    backgroundColor: '#0a1a10',
+    borderBottomWidth: 1,
+    borderBottomColor: '#162a1a',
+  },
+  hojaRowWarn: {
+    backgroundColor: '#1c1400',
+    borderBottomColor: '#3a2c00',
+  },
+  hojaIcon: { fontSize: 13, color: '#4ade80' },
+  hojaIconEmpty: { fontSize: 13 },
+  hojaEmpty: { color: colors.textFaint, fontSize: 12, fontStyle: 'italic', flex: 1 },
+  hojaInfo: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  hojaText: { color: '#4ade80', fontSize: 12 },
+  hojaTextWarn: { color: colors.warning },
+  hojaVal: { fontWeight: '700' },
+  hojaEsp: { color: colors.textFaint, fontWeight: '400' },
+  hojaCheck: { color: '#4ade80', fontWeight: '700' },
   sinPallets: {
     color: colors.textFaint,
     fontSize: 13,
@@ -558,6 +755,7 @@ const cs = StyleSheet.create({
     borderColor: '#166534',
   },
   badgeDoneText: { color: '#4ade80', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+  horaLabel: { color: '#4ade8060', fontSize: 11, marginLeft: 2 },
 })
 
 const miniStat = StyleSheet.create({
@@ -666,6 +864,8 @@ const styles = StyleSheet.create({
   },
   modalTitle: { color: colors.text, fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
   modalBtns: { flexDirection: 'row', gap: spacing.sm },
+  modalSubtitle: { color: colors.textFaint, fontSize: 12, marginTop: -spacing.sm * 0.5 },
+  modalRow: { flexDirection: 'row', gap: spacing.sm },
   textArea: {
     backgroundColor: colors.bg,
     borderWidth: 1,
