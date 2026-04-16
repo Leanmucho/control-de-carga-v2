@@ -383,3 +383,66 @@ export async function enviarResumenPorEmail(
 
   return result.status as 'sent' | 'saved' | 'cancelled'
 }
+
+/**
+ * Envía el resumen por email con el CSV adjunto.
+ * En web: abre mailto + dispara descarga del archivo.
+ * En mobile: adjunta el CSV al cliente de correo nativo.
+ */
+export async function enviarResumenConAdjunto(
+  resumen: ResumenTurno,
+  destinatario: string,
+): Promise<void> {
+  const csv = generarCSV(resumen)
+  const fecha = new Date(resumen.fecha_inicio)
+    .toLocaleDateString('es-AR')
+    .replace(/\//g, '-')
+  const fileName = `turno-${resumen.controlador.replace(/\s+/g, '_')}-${fecha}.csv`
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+  const subject = `Resumen turno ${fmt(resumen.fecha_inicio)} — ${resumen.controlador}`
+  const body = formatearResumenTexto(resumen)
+
+  if (Platform.OS === 'web') {
+    // Descargar CSV
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    a.click()
+    URL.revokeObjectURL(url)
+    // Abrir cliente de mail
+    const mailto = `mailto:${encodeURIComponent(destinatario)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    window.open(mailto, '_blank')
+    return
+  }
+
+  // Mobile: guardar CSV y adjuntar
+  const fileUri = FileSystem.cacheDirectory + fileName
+  await FileSystem.writeAsStringAsync(fileUri, csv, {
+    encoding: FileSystem.EncodingType.UTF8,
+  })
+
+  const disponible = await MailComposer.isAvailableAsync()
+  if (!disponible) {
+    // Sin cliente de mail: al menos compartimos el archivo
+    const canShare = await Sharing.isAvailableAsync()
+    if (canShare) {
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'text/csv',
+        dialogTitle: 'Compartir resumen de turno',
+        UTI: 'public.comma-separated-values-text',
+      })
+    }
+    return
+  }
+
+  await MailComposer.composeAsync({
+    recipients: [destinatario],
+    subject,
+    body,
+    attachments: [fileUri],
+  })
+}
