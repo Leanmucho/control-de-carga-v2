@@ -30,9 +30,12 @@ export async function iniciarTurno(controladorId: string): Promise<Turno> {
 }
 
 export async function finalizarTurno(turnoId: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('turnos')
     .update({ activo: false, fecha_fin: new Date().toISOString() })
     .eq('id', turnoId)
-  if (error) throw error
+    .select('id')
+    .single()
+  if (error) throw new Error(`Error al finalizar turno: ${error.message}`)
+  if (!data) throw new Error('No se pudo finalizar el turno. Falta política RLS de UPDATE en la tabla turnos.')
 }

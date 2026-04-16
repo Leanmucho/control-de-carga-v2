@@ -2,8 +2,14 @@ import { supabase } from '../supabase'
 import type { Pallet } from '../../types/database'
 
 export async function checkPallet(palletId: string): Promise<void> {
-  const { error } = await supabase.rpc('check_pallet', { p_id: palletId })
-  if (error) throw error
+  const { data, error } = await supabase
+    .from('pallets')
+    .update({ estado: 'cargado', hora_carga: new Date().toISOString() })
+    .eq('id', palletId)
+    .select('id')
+    .single()
+  if (error) throw new Error(`Error al marcar pallet: ${error.message}`)
+  if (!data) throw new Error('No se pudo marcar el pallet. Falta política RLS de UPDATE en la tabla pallets.')
 }
 
 export async function addPallet(payload: {

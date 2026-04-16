@@ -8,7 +8,7 @@ import { getCargas } from '../../../src/lib/queries/cargas'
 import { Button } from '../../../src/components/ui/Button'
 import { CargaCard } from '../../../src/components/CargaCard'
 import { colors, spacing, radius } from '../../../src/constants/theme'
-import { construirResumen, guardarResumenLocal, enviarResumenPorEmail } from '../../../src/lib/turnoResumen'
+import { construirResumen, guardarResumenLocal, enviarResumenPorEmail, compartirComoExcel } from '../../../src/lib/turnoResumen'
 import type { Carga } from '../../../src/types/database'
 import type { ResumenTurno } from '../../../src/lib/turnoResumen'
 
@@ -89,14 +89,17 @@ export default function TurnoScreen() {
     if (resumen) {
       Alert.alert(
         'Turno finalizado ✓',
-        'El resumen quedó guardado en el dispositivo. ¿Querés enviarlo por email ahora?',
+        'El resumen quedó guardado. ¿Cómo querés exportarlo?',
         [
+          { text: 'Cerrar', style: 'cancel' },
           {
-            text: 'Ahora no',
-            style: 'cancel',
+            text: '📊 Excel / CSV',
+            onPress: () => compartirComoExcel(resumen!).catch(e =>
+              Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo exportar')
+            ),
           },
           {
-            text: 'Enviar email',
+            text: '📧 Email',
             onPress: () => ofrecerEmail(resumen!),
           },
         ]
@@ -109,7 +112,7 @@ export default function TurnoScreen() {
     if (resultado === 'unavailable') {
       Alert.alert(
         'Sin cliente de mail',
-        'No hay una app de correo configurada en este dispositivo. El resumen quedó guardado para enviarlo más tarde.'
+        'No hay una app de correo configurada. El resumen quedó guardado para enviarlo más tarde.'
       )
     }
   }

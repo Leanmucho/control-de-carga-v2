@@ -10,15 +10,19 @@ interface Props {
 }
 
 export function EstadoBadge({ estado, size = 'md' }: Props) {
-  const c = ESTADO_COLORS[estado] ?? { bg: '#1e293b', text: '#94a3b8' }
+  const c = ESTADO_COLORS[estado] ?? { bg: '#21262d', text: '#8b949e' }
   return (
     <View style={[
       styles.badge,
-      { backgroundColor: c.bg, borderColor: c.text },
+      { backgroundColor: c.bg },
       size === 'sm' && styles.sm,
     ]}>
       <View style={[styles.dot, { backgroundColor: c.text }]} />
-      <Text style={[styles.text, { color: c.text }, size === 'sm' && styles.textSm]}>
+      <Text style={[
+        styles.text,
+        { color: c.text },
+        size === 'sm' && styles.textSm,
+      ]}>
         {ESTADO_LABELS[estado]}
       </Text>
     </View>
@@ -34,15 +38,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 20,
     alignSelf: 'flex-start',
-    borderWidth: 1,
-    opacity: 0.95,
   },
   sm: { paddingHorizontal: 8, paddingVertical: 3, gap: 4 },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-  },
-  text: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2 },
+  dot: { width: 5, height: 5, borderRadius: 3 },
+  text: { fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
   textSm: { fontSize: 11 },
 })

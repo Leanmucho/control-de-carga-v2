@@ -1,51 +1,79 @@
+// ── Color Palette ─────────────────────────────────────────────────────────────
+// Dark SaaS theme — GitHub-inspired slate, professional
+
 export const colors = {
-  bg:          '#0b1120',
-  surface:     '#111827',
-  surfaceHigh: '#1a2535',
-  border:      '#1f2f44',
-  borderHigh:  '#2d4059',
-  text:        '#f1f5f9',
-  textMuted:   '#94a3b8',
-  textFaint:   '#4b6280',
-  primary:     '#3b82f6',
-  primaryMid:  '#1d4ed8',
-  success:     '#22c55e',
-  successDim:  '#15803d',
-  warning:     '#f59e0b',
-  danger:      '#ef4444',
-  orange:      '#ff9500',
+  // Backgrounds
+  bg:          '#0d1117',
+  surface:     '#161b22',
+  surfaceHigh: '#21262d',
+  elevated:    '#30363d',
+
+  // Borders
+  border:    '#21262d',
+  borderMid: '#30363d',
+  borderHigh:'#484f58',
+
+  // Text
+  text:      '#e6edf3',
+  textMuted: '#8b949e',
+  textFaint: '#6e7681',
+
+  // Brand
+  primary:     '#4493f8',
+  primaryDark: '#1f6feb',
+  primaryMid:  '#0c2d6b',
+  primaryFaint:'#051d4d',
+
+  // Semantic
+  success:    '#3fb950',
+  successDim: '#238636',
+  warning:    '#d29922',
+  warningDim: '#3d2b00',
+  danger:     '#f85149',
+  dangerDim:  '#3d0000',
+
+  // Legacy aliases (keep for backward compat)
+  orange: '#d29922',
+  overlay: 'rgba(1,4,9,0.80)',
 }
+
+// ── Spacing (8pt system) ──────────────────────────────────────────────────────
 
 export const spacing = {
   xs: 4, sm: 8, md: 16, lg: 24, xl: 32,
 }
 
+// ── Border Radius ─────────────────────────────────────────────────────────────
+
 export const radius = {
-  sm: 6, md: 10, lg: 16, xl: 20, full: 999,
+  xs: 4, sm: 6, md: 10, lg: 14, xl: 20, full: 999,
 }
+
+// ── Shadows ───────────────────────────────────────────────────────────────────
 
 export const shadow = {
   sm: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.4,
     shadowRadius: 3,
     elevation: 2,
   },
   md: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 6,
   },
 }
 
+// ── Estado Colors ─────────────────────────────────────────────────────────────
+
 export const ESTADO_COLORS: Record<string, { bg: string; text: string }> = {
-  en_piso:    { bg: '#0c1f36', text: '#60a5fa' },
-  controlado: { bg: '#0a1f14', text: '#4ade80' },
-  en_carga:   { bg: '#2d0f00', text: '#fb923c' },
-  finalizado: { bg: '#130f2e', text: '#a78bfa' },
-  en_piso_p:  { bg: '#111827', text: '#64748b' },
-  cargado:    { bg: '#0a1f14', text: '#4ade80' },
+  en_piso:    { bg: '#051d4d', text: '#4493f8' },
+  controlado: { bg: '#1a0a4d', text: '#a78bfa' },
+  en_carga:   { bg: '#3d2b00', text: '#d29922' },
+  finalizado: { bg: '#0d2c0d', text: '#3fb950' },
+  cargado:    { bg: '#0d2c0d', text: '#3fb950' },
 }

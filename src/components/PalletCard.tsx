@@ -35,13 +35,12 @@ export function PalletCard({ pallet, index, onCheck, onLongPress }: Props) {
 
       {/* Info */}
       <View style={styles.info}>
-        <Text style={styles.index}>Pallet {index + 1}</Text>
+        <Text style={styles.indexLabel}>Pallet {index + 1}</Text>
         <Text style={[styles.cajas, cargado && styles.cajasDone]}>
           {pallet.cantidad_cajas} cajas
         </Text>
         {pallet.hora_carga && (
           <Text style={styles.hora}>
-            Cargado{' '}
             {new Date(pallet.hora_carga).toLocaleTimeString('es-AR', {
               hour: '2-digit', minute: '2-digit',
             })}
@@ -49,19 +48,19 @@ export function PalletCard({ pallet, index, onCheck, onLongPress }: Props) {
         )}
       </View>
 
-      {/* Estado indicator */}
+      {/* Estado */}
       <View style={styles.right}>
         {cargado ? (
-          <View style={styles.estadoDone}>
-            <Text style={styles.estadoDoneText}>CARGADO</Text>
+          <View style={styles.badgeDone}>
+            <Text style={styles.badgeDoneText}>CARGADO</Text>
           </View>
         ) : (
-          <View style={styles.estadoPiso}>
-            <Text style={styles.estadoPisoText}>EN PISO</Text>
-          </View>
-        )}
-        {!cargado && (
-          <Text style={styles.longPressHint}>mantené</Text>
+          <>
+            <View style={styles.badgePiso}>
+              <Text style={styles.badgePisoText}>EN PISO</Text>
+            </View>
+            <Text style={styles.hint}>mantené</Text>
+          </>
         )}
       </View>
     </TouchableOpacity>
@@ -81,11 +80,11 @@ const styles = StyleSheet.create({
     minHeight: 60,
   },
   cardCargado: {
-    borderColor: '#14532d',
-    backgroundColor: '#052e16',
+    borderColor: colors.successDim,
+    backgroundColor: '#0d1f0d',
   },
   checkZone: {
-    width: 60,
+    width: 56,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
@@ -116,7 +115,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  index: {
+  indexLabel: {
     color: colors.textFaint,
     fontSize: 10,
     fontWeight: '600',
@@ -130,7 +129,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.3,
   },
-  cajasDone: { color: '#4ade80' },
+  cajasDone: { color: colors.success },
   hora: {
     color: colors.textFaint,
     fontSize: 11,
@@ -141,35 +140,31 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 4,
   },
-  estadoDone: {
-    backgroundColor: '#052e16',
+  badgeDone: {
+    backgroundColor: '#0d2c0d',
     borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: '#166534',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
-  estadoDoneText: {
-    color: '#4ade80',
+  badgeDoneText: {
+    color: colors.success,
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  estadoPiso: {
-    backgroundColor: '#0c1f36',
+  badgePiso: {
+    backgroundColor: colors.primaryFaint,
     borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: '#1e3a5f',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
-  estadoPisoText: {
-    color: '#60a5fa',
+  badgePisoText: {
+    color: colors.primary,
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  longPressHint: {
+  hint: {
     color: colors.textFaint,
     fontSize: 9,
     letterSpacing: 0.3,

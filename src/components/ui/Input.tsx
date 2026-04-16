@@ -1,11 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
-  TextInput,
-  Text,
-  View,
-  StyleSheet,
-  TextInputProps,
-  ViewStyle,
+  TextInput, Text, View, StyleSheet, TextInputProps, ViewStyle,
 } from 'react-native'
 import { colors, radius, spacing } from '../../constants/theme'
 
@@ -15,13 +10,22 @@ interface Props extends TextInputProps {
   containerStyle?: ViewStyle
 }
 
-export function Input({ label, error, containerStyle, style, ...rest }: Props) {
+export function Input({ label, error, containerStyle, style, onFocus, onBlur, ...rest }: Props) {
+  const [focused, setFocused] = useState(false)
+
   return (
     <View style={[styles.container, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <TextInput
-        style={[styles.input, error ? styles.inputError : null, style]}
+        style={[
+          styles.input,
+          focused && styles.inputFocused,
+          error && styles.inputError,
+          style,
+        ]}
         placeholderTextColor={colors.textFaint}
+        onFocus={e => { setFocused(true); onFocus?.(e) }}
+        onBlur={e => { setFocused(false); onBlur?.(e) }}
         {...rest}
       />
       {error && <Text style={styles.error}>{error}</Text>}
@@ -32,23 +36,27 @@ export function Input({ label, error, containerStyle, style, ...rest }: Props) {
 const styles = StyleSheet.create({
   container: { gap: 6 },
   label: {
-    color: colors.textMuted,
-    fontSize: 12,
+    color: colors.textFaint,
+    fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   input: {
     backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderMid,
     borderRadius: radius.md,
     color: colors.text,
     fontSize: 15,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
-    minHeight: 48,
+    minHeight: 46,
+  },
+  inputFocused: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
   },
   inputError: { borderColor: colors.danger },
-  error: { color: colors.danger, fontSize: 12 },
+  error: { color: colors.danger, fontSize: 12, marginTop: 2 },
 })

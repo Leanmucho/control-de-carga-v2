@@ -1,11 +1,6 @@
 import React from 'react'
 import {
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  ViewStyle,
-  TextStyle,
+  TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle,
 } from 'react-native'
 import { colors, radius, spacing } from '../../constants/theme'
 
@@ -22,26 +17,30 @@ interface Props {
   fullWidth?: boolean
 }
 
-const variantStyles: Record<Variant, { bg: string; text: string; border?: string }> = {
-  primary:   { bg: colors.primary,  text: '#fff' },
-  secondary: { bg: colors.surface,  text: colors.text,      border: colors.border },
-  danger:    { bg: colors.danger,   text: '#fff' },
-  ghost:     { bg: 'transparent',   text: colors.textMuted,  border: 'transparent' },
-  success:   { bg: colors.success,  text: '#fff' },
+const VARIANTS: Record<Variant, { bg: string; text: string; border: string }> = {
+  primary:   { bg: colors.primary,      text: '#fff',           border: 'transparent' },
+  secondary: { bg: 'transparent',       text: colors.textMuted, border: colors.borderMid },
+  danger:    { bg: colors.danger,       text: '#fff',           border: 'transparent' },
+  ghost:     { bg: 'transparent',       text: colors.primary,   border: 'transparent' },
+  success:   { bg: colors.success,      text: '#fff',           border: 'transparent' },
 }
 
 export function Button({
   label, onPress, variant = 'primary', loading, disabled, style, textStyle, fullWidth,
 }: Props) {
-  const v = variantStyles[variant]
+  const v = VARIANTS[variant]
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled || loading}
-      activeOpacity={0.75}
+      activeOpacity={0.7}
       style={[
         styles.base,
-        { backgroundColor: v.bg, borderColor: v.border ?? 'transparent', borderWidth: v.border ? 1 : 0 },
+        {
+          backgroundColor: v.bg,
+          borderColor: v.border,
+          borderWidth: v.border !== 'transparent' ? 1 : 0,
+        },
         fullWidth && styles.fullWidth,
         (disabled || loading) && styles.disabled,
         style,
@@ -57,14 +56,18 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 42,
   },
   fullWidth: { width: '100%' },
-  disabled: { opacity: 0.45 },
-  label: { fontSize: 15, fontWeight: '600' },
+  disabled: { opacity: 0.4 },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
 })
