@@ -80,6 +80,14 @@ export async function guardarNota(cargaId: string, nota: string): Promise<void> 
   if (error) throw error
 }
 
+export async function eliminarCarga(cargaId: string): Promise<void> {
+  const { error } = await supabase
+    .from('cargas')
+    .delete()
+    .eq('id', cargaId)
+  if (error) throw new Error(`Error al eliminar carga: ${error.message}`)
+}
+
 export async function buscarCargas(filtros: {
   chofer?: string
   transporte?: string

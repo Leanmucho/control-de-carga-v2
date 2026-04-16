@@ -9,6 +9,7 @@ import { useCallback } from 'react'
 import { useCarga } from '../../../../src/hooks/useCarga'
 import { addCliente } from '../../../../src/lib/queries/clientes'
 import { addIncidencia } from '../../../../src/lib/queries/incidencias'
+import { eliminarCarga } from '../../../../src/lib/queries/cargas'
 import { Button } from '../../../../src/components/ui/Button'
 import { Card } from '../../../../src/components/ui/Card'
 import { EstadoBadge } from '../../../../src/components/EstadoBadge'
@@ -34,6 +35,7 @@ export default function CargaDetailScreen() {
   const [incTipo, setIncTipo] = useState<string>(TIPOS_INCIDENCIA[0])
   const [incDesc, setIncDesc] = useState('')
   const [saving, setSaving] = useState(false)
+  const [eliminando, setEliminando] = useState(false)
 
   if (loading || !carga) {
     return (
@@ -75,6 +77,30 @@ export default function CargaDetailScreen() {
     } catch (e: unknown) {
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo marcar el pallet')
     }
+  }
+
+  function handleEliminarCarga() {
+    Alert.alert(
+      'Eliminar carga',
+      `¿Seguro que querés eliminar la carga de ${carga.chofer}? Se borrarán todos los clientes, pallets e incidencias asociados.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            setEliminando(true)
+            try {
+              await eliminarCarga(id)
+              router.back()
+            } catch (e: unknown) {
+              setEliminando(false)
+              Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo eliminar la carga')
+            }
+          },
+        },
+      ]
+    )
   }
 
   async function handleAddCliente() {
@@ -244,6 +270,17 @@ export default function CargaDetailScreen() {
         ) : (
           <Text style={styles.empty}>Sin notas</Text>
         )}
+
+        {/* Zona de peligro */}
+        <View style={styles.dangerZone}>
+          <Button
+            label={eliminando ? 'Eliminando…' : '🗑  Eliminar esta carga'}
+            onPress={handleEliminarCarga}
+            variant="danger"
+            fullWidth
+            disabled={eliminando}
+          />
+        </View>
       </ScrollView>
 
       {/* ── Modales ── */}
@@ -573,6 +610,12 @@ const styles = StyleSheet.create({
   incHora: { color: colors.textFaint, fontSize: 12 },
   incDesc: { color: colors.textMuted, fontSize: 14, marginTop: 2 },
   notaText: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  dangerZone: {
+    marginTop: spacing.xl,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderMid,
+  },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
   modalBox: {
     backgroundColor: colors.surface,
