@@ -36,6 +36,8 @@ export default function CargaDetailScreen() {
   const [incDesc, setIncDesc] = useState('')
   const [saving, setSaving] = useState(false)
   const [eliminando, setEliminando] = useState(false)
+  const [avanzando, setAvanzando] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   if (loading || !carga) {
     return (
@@ -58,49 +60,36 @@ export default function CargaDetailScreen() {
   ) ?? 0
 
   async function handleAvanzar() {
-    if (!siguienteEstado) return
-    Alert.alert('Confirmar', btnLabel, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Confirmar',
-        onPress: async () => {
-          try { await avanzar(siguienteEstado) }
-          catch (e: unknown) { Alert.alert('Error', e instanceof Error ? e.message : 'Error') }
-        },
-      },
-    ])
+    if (!siguienteEstado || avanzando) return
+    setErrorMsg(null)
+    setAvanzando(true)
+    try {
+      await avanzar(siguienteEstado)
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : 'No se pudo cambiar el estado')
+    } finally {
+      setAvanzando(false)
+    }
   }
 
   async function handleCheckPallet(palletId: string) {
     try {
       await checkPallet(palletId)
     } catch (e: unknown) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo marcar el pallet')
+      setErrorMsg(e instanceof Error ? e.message : 'No se pudo marcar el pallet')
     }
   }
 
-  function handleEliminarCarga() {
-    Alert.alert(
-      'Eliminar carga',
-      `¿Seguro que querés eliminar la carga de ${carga.chofer}? Se borrarán todos los clientes, pallets e incidencias asociados.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            setEliminando(true)
-            try {
-              await eliminarCarga(id)
-              router.back()
-            } catch (e: unknown) {
-              setEliminando(false)
-              Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo eliminar la carga')
-            }
-          },
-        },
-      ]
-    )
+  async function handleEliminarCarga() {
+    setErrorMsg(null)
+    setEliminando(true)
+    try {
+      await eliminarCarga(id)
+      router.back()
+    } catch (e: unknown) {
+      setEliminando(false)
+      setErrorMsg(e instanceof Error ? e.message : 'No se pudo eliminar la carga')
+    }
   }
 
   async function handleAddCliente() {
@@ -180,6 +169,14 @@ export default function CargaDetailScreen() {
           </View>
         </Card>
 
+        {/* Banner de error */}
+        {errorMsg && (
+          <TouchableOpacity onPress={() => setErrorMsg(null)} style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>⚠ {errorMsg}</Text>
+            <Text style={styles.errorBannerClose}>✕</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Stats strip */}
         {total > 0 && (
           <View style={styles.statsStrip}>
@@ -193,10 +190,11 @@ export default function CargaDetailScreen() {
         {/* Botón de transición */}
         {siguienteEstado && (
           <Button
-            label={btnLabel}
+            label={avanzando ? 'Guardando…' : btnLabel}
             onPress={handleAvanzar}
             variant={siguienteEstado === 'finalizado' ? 'success' : 'primary'}
             fullWidth
+            disabled={avanzando}
             style={{ marginBottom: spacing.md }}
           />
         )}
@@ -274,8 +272,15 @@ export default function CargaDetailScreen() {
         {/* Zona de peligro */}
         <View style={styles.dangerZone}>
           <Button
-            label={eliminando ? 'Eliminando…' : '🗑  Eliminar esta carga'}
-            onPress={handleEliminarCarga}
+            label={eliminando ? 'Eliminando…' : 'Eliminar esta carga'}
+            onPress={() => Alert.alert(
+              'Eliminar carga',
+              `¿Eliminar la carga de ${carga.chofer}? Se borran todos sus pallets e incidencias.`,
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: handleEliminarCarga },
+              ]
+            )}
             variant="danger"
             fullWidth
             disabled={eliminando}
@@ -610,6 +615,29 @@ const styles = StyleSheet.create({
   incHora: { color: colors.textFaint, fontSize: 12 },
   incDesc: { color: colors.textMuted, fontSize: 14, marginTop: 2 },
   notaText: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#3d0000',
+    borderWidth: 1,
+    borderColor: '#7f1d1d',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginBottom: spacing.md,
+  },
+  errorBannerText: {
+    color: '#fca5a5',
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  errorBannerClose: {
+    color: '#fca5a5',
+    fontSize: 16,
+    paddingLeft: 8,
+  },
   dangerZone: {
     marginTop: spacing.xl,
     paddingTop: spacing.lg,

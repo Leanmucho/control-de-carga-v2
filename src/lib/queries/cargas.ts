@@ -53,25 +53,19 @@ export async function avanzarEstado(
   const update: Record<string, string> = { estado: nuevoEstado }
   if (nuevoEstado === 'en_carga')   update.hora_inicio_carga = new Date().toISOString()
   if (nuevoEstado === 'finalizado') update.hora_fin_carga    = new Date().toISOString()
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('cargas')
     .update(update)
     .eq('id', cargaId)
-    .select('id')
-    .single()
-  if (error) throw new Error(`Error al actualizar estado: ${error.message}`)
-  if (!data) throw new Error('No se pudo actualizar el estado. Verificá los permisos en Supabase (RLS).')
+  if (error) throw new Error(`Error al actualizar estado: ${error.message} [${error.code}]`)
 }
 
 export async function registrarLlegadaCamion(cargaId: string): Promise<void> {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('cargas')
     .update({ hora_llegada_camion: new Date().toISOString() })
     .eq('id', cargaId)
-    .select('id')
-    .single()
   if (error) throw new Error(`Error al registrar llegada: ${error.message}`)
-  if (!data) throw new Error('No se pudo registrar la llegada. Verificá los permisos en Supabase (RLS).')
 }
 
 export async function guardarNota(cargaId: string, nota: string): Promise<void> {
