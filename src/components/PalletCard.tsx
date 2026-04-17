@@ -8,6 +8,7 @@ interface Props {
   index: number
   onCheck: () => void
   onLongPress: () => void
+  key?: string | number
 }
 
 export function PalletCard({ pallet, index, onCheck, onLongPress }: Props) {

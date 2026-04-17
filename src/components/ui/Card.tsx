@@ -3,7 +3,7 @@ import { View, StyleSheet, ViewStyle } from 'react-native'
 import { colors, radius, spacing } from '../../constants/theme'
 
 interface Props {
-  children: React.ReactNode
+  children?: React.ReactNode
   style?: ViewStyle
   padding?: keyof typeof spacing
   variant?: 'default' | 'elevated' | 'flat'

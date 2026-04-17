@@ -426,7 +426,6 @@ const styles = StyleSheet.create({
   clienteNombre: { color: colors.text, fontSize: 16, fontWeight: '700' },
   offlineBadge: { color: colors.warning, fontSize: 11, marginTop: 2 },
   calcBtn: { padding: spacing.sm },
-  calcBtnText: { fontSize: 20 },
 
   stats: {
     flexDirection: 'row',

@@ -1,16 +1,27 @@
 import React, { useState } from 'react'
 import {
-  TextInput, Text, View, StyleSheet, TextInputProps, ViewStyle,
+  TextInput, Text, View, StyleSheet, ViewStyle,
 } from 'react-native'
 import { colors, radius, spacing } from '../../constants/theme'
 
-interface Props extends TextInputProps {
+interface Props {
   label?: string
   error?: string
   containerStyle?: ViewStyle
+  style?: ViewStyle
+  placeholder?: string
+  value?: string
+  onChangeText?: (text: string) => void
+  onFocus?: (e: any) => void
+  onBlur?: (e: any) => void
+  keyboardType?: any
+  autoCapitalize?: any
+  autoCorrect?: boolean
+  secureTextEntry?: boolean
+  autoFocus?: boolean
 }
 
-export function Input({ label, error, containerStyle, style, onFocus, onBlur, ...rest }: Props) {
+export function Input({ label, error, containerStyle, style, onFocus, onBlur, value, onChangeText, ...rest }: Props) {
   const [focused, setFocused] = useState(false)
 
   return (
@@ -24,6 +35,8 @@ export function Input({ label, error, containerStyle, style, onFocus, onBlur, ..
           style,
         ]}
         placeholderTextColor={colors.textFaint}
+        value={value}
+        onChangeText={onChangeText}
         onFocus={e => { setFocused(true); onFocus?.(e) }}
         onBlur={e => { setFocused(false); onBlur?.(e) }}
         {...rest}

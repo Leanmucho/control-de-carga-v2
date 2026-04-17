@@ -8,6 +8,7 @@ import type { EstadoCarga } from '../constants/estados'
 interface Props {
   carga: Carga
   onPress: () => void
+  key?: string | number
 }
 
 export function CargaCard({ carga, onPress }: Props) {
