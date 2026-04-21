@@ -1,9 +1,5 @@
 import * as SQLite from 'expo-sqlite'
-import { Platform } from 'react-native'
 import type { Turno, Carga, ClienteCarga, Pallet, Incidencia } from '../../types/database'
-
-// SQLite is only available on native (Android/iOS). All functions are no-ops on web.
-const IS_NATIVE = Platform.OS !== 'web'
 
 let _db: SQLite.SQLiteDatabase | null = null
 
@@ -13,7 +9,6 @@ function getDb(): SQLite.SQLiteDatabase {
 }
 
 export function initDb(): void {
-  if (!IS_NATIVE) return
   const db = getDb()
   db.execSync(`PRAGMA journal_mode = WAL;`)
   db.execSync(`
@@ -80,7 +75,6 @@ export function initDb(): void {
 // ─── Offline queue ────────────────────────────────────────────────────────────
 
 export function dbEnqueueOp(id: string, opType: string, payload: unknown): void {
-  if (!IS_NATIVE) return
   getDb().runSync(
     `INSERT INTO offline_queue (id, op_type, payload, created_at) VALUES (?,?,?,?)`,
     [id, opType, JSON.stringify(payload), Date.now()]
@@ -88,7 +82,6 @@ export function dbEnqueueOp(id: string, opType: string, payload: unknown): void 
 }
 
 export function dbGetQueue<T = unknown>(): Array<{ id: string; op: T }> {
-  if (!IS_NATIVE) return []
   const rows = getDb().getAllSync<{ id: string; op_type: string; payload: string }>(
     `SELECT id, op_type, payload FROM offline_queue ORDER BY created_at ASC`
   )
@@ -99,17 +92,14 @@ export function dbGetQueue<T = unknown>(): Array<{ id: string; op: T }> {
 }
 
 export function dbRemoveOp(id: string): void {
-  if (!IS_NATIVE) return
   getDb().runSync(`DELETE FROM offline_queue WHERE id = ?`, [id])
 }
 
 export function dbClearQueue(): void {
-  if (!IS_NATIVE) return
   getDb().runSync(`DELETE FROM offline_queue`)
 }
 
 export function dbGetQueueCount(): number {
-  if (!IS_NATIVE) return 0
   const row = getDb().getFirstSync<{ n: number }>(`SELECT COUNT(*) as n FROM offline_queue`)
   return row?.n ?? 0
 }
@@ -117,7 +107,6 @@ export function dbGetQueueCount(): number {
 // ─── Turno ────────────────────────────────────────────────────────────────────
 
 export function cacheTurno(t: Turno | null): void {
-  if (!IS_NATIVE) return
   const db = getDb()
   db.runSync(`DELETE FROM turnos WHERE activo = 1`)
   if (!t) return
@@ -129,7 +118,6 @@ export function cacheTurno(t: Turno | null): void {
 }
 
 export function getCachedTurnoActivo(): Turno | null {
-  if (!IS_NATIVE) return null
   const row = getDb().getFirstSync<{ raw: string }>(
     `SELECT raw FROM turnos WHERE activo = 1 LIMIT 1`
   )
@@ -139,7 +127,7 @@ export function getCachedTurnoActivo(): Turno | null {
 // ─── Cargas ───────────────────────────────────────────────────────────────────
 
 export function cacheCargas(cargas: Carga[]): void {
-  if (!IS_NATIVE || cargas.length === 0) return
+  if (cargas.length === 0) return
   const db = getDb()
   const turnoId = cargas[0].turno_id
   db.withTransactionSync(() => {
@@ -177,7 +165,6 @@ export function cacheCargas(cargas: Carga[]): void {
 }
 
 export function cacheCarga(c: Carga): void {
-  if (!IS_NATIVE) return
   getDb().runSync(
     `INSERT OR REPLACE INTO cargas VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [c.id, c.turno_id, c.chofer, c.transporte, c.numero_remito ?? null,
@@ -188,7 +175,6 @@ export function cacheCarga(c: Carga): void {
 }
 
 export function getCachedCargas(turnoId: string): Carga[] {
-  if (!IS_NATIVE) return []
   const rows = getDb().getAllSync<{ raw: string }>(
     `SELECT raw FROM cargas WHERE turno_id = ? ORDER BY created_at DESC`,
     [turnoId]
@@ -197,14 +183,12 @@ export function getCachedCargas(turnoId: string): Carga[] {
 }
 
 export function getCachedCarga(id: string): Carga | null {
-  if (!IS_NATIVE) return null
   const db = getDb()
   const row = db.getFirstSync<{ raw: string }>(
     `SELECT raw FROM cargas WHERE id = ?`, [id]
   )
   if (!row) return null
   const c: Carga = JSON.parse(row.raw)
-
   const clientes = db.getAllSync<ClienteCarga>(
     `SELECT * FROM clientes_carga WHERE carga_id = ? ORDER BY orden`, [id]
   )
@@ -221,7 +205,6 @@ export function getCachedCarga(id: string): Carga | null {
 }
 
 export function deleteCachedCarga(id: string): void {
-  if (!IS_NATIVE) return
   const db = getDb()
   db.withTransactionSync(() => {
     const clientes = db.getAllSync<{ id: string }>(
@@ -239,7 +222,6 @@ export function deleteCachedCarga(id: string): void {
 // ─── Clientes ─────────────────────────────────────────────────────────────────
 
 export function cacheCliente(cl: ClienteCarga): void {
-  if (!IS_NATIVE) return
   getDb().runSync(
     `INSERT OR REPLACE INTO clientes_carga VALUES (?,?,?,?,?,?)`,
     [cl.id, cl.carga_id, cl.nombre, cl.orden,
@@ -248,7 +230,6 @@ export function cacheCliente(cl: ClienteCarga): void {
 }
 
 export function deleteCachedCliente(id: string): void {
-  if (!IS_NATIVE) return
   const db = getDb()
   db.runSync(`DELETE FROM pallets WHERE cliente_carga_id = ?`, [id])
   db.runSync(`DELETE FROM clientes_carga WHERE id = ?`, [id])
@@ -257,7 +238,6 @@ export function deleteCachedCliente(id: string): void {
 // ─── Pallets ──────────────────────────────────────────────────────────────────
 
 export function cachePallet(p: Pallet): void {
-  if (!IS_NATIVE) return
   getDb().runSync(
     `INSERT OR REPLACE INTO pallets VALUES (?,?,?,?,?,?)`,
     [p.id, p.cliente_carga_id, p.cantidad_cajas, p.estado,
@@ -266,7 +246,6 @@ export function cachePallet(p: Pallet): void {
 }
 
 export function updateCachedPalletEstado(palletId: string): void {
-  if (!IS_NATIVE) return
   getDb().runSync(
     `UPDATE pallets SET estado = 'cargado', hora_carga = ? WHERE id = ?`,
     [new Date().toISOString(), palletId]
@@ -274,7 +253,6 @@ export function updateCachedPalletEstado(palletId: string): void {
 }
 
 export function updateCachedPalletCajas(palletId: string, cantidad_cajas: number): void {
-  if (!IS_NATIVE) return
   getDb().runSync(
     `UPDATE pallets SET cantidad_cajas = ? WHERE id = ?`,
     [cantidad_cajas, palletId]
@@ -282,14 +260,12 @@ export function updateCachedPalletCajas(palletId: string, cantidad_cajas: number
 }
 
 export function deleteCachedPallet(palletId: string): void {
-  if (!IS_NATIVE) return
   getDb().runSync(`DELETE FROM pallets WHERE id = ?`, [palletId])
 }
 
 // ─── Incidencias ──────────────────────────────────────────────────────────────
 
 export function cacheIncidencia(inc: Incidencia): void {
-  if (!IS_NATIVE) return
   getDb().runSync(
     `INSERT OR REPLACE INTO incidencias VALUES (?,?,?,?,?)`,
     [inc.id, inc.carga_id, inc.tipo, inc.descripcion, inc.hora]
