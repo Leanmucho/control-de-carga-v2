@@ -21,7 +21,7 @@ export async function getCarga(id: string): Promise<Carga> {
     .from('cargas')
     .select(`
       *,
-      clientes_carga(id, nombre, orden, pallets(*)),
+      clientes_carga(id, nombre, orden, pallets_hoja_ruta, cajas_hoja_ruta, pallets(*)),
       incidencias(*)
     `)
     .eq('id', id)

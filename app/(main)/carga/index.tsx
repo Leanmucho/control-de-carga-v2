@@ -1,11 +1,13 @@
 import React, { useState, useCallback } from 'react'
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl,
+  View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Alert, Platform,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { useTurnoActivo } from '../../../src/hooks/useTurnoActivo'
-import { getCargas } from '../../../src/lib/queries/cargas'
+import { getCargas, eliminarCarga } from '../../../src/lib/queries/cargas'
+import { cacheCargas, getCachedCargas, deleteCachedCarga } from '../../../src/lib/offline/db'
+import { useNetworkStatus } from '../../../src/hooks/useNetworkStatus'
 import { CargaCard } from '../../../src/components/CargaCard'
 import { Button } from '../../../src/components/ui/Button'
 import { colors, spacing, radius } from '../../../src/constants/theme'
@@ -13,6 +15,7 @@ import type { Carga } from '../../../src/types/database'
 
 export default function CargasScreen() {
   const { turno, loading: turnoLoading } = useTurnoActivo()
+  const { isOnline } = useNetworkStatus()
   const router = useRouter()
   const [cargas, setCargas] = useState<Carga[]>([])
   const [loading, setLoading] = useState(false)
@@ -24,6 +27,10 @@ export default function CargasScreen() {
     try {
       const data = await getCargas(turno.id)
       setCargas(data)
+      cacheCargas(data)
+    } catch {
+      const cached = getCachedCargas(turno.id)
+      if (cached.length > 0) setCargas(cached)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -37,6 +44,29 @@ export default function CargasScreen() {
   async function handleRefresh() {
     setRefreshing(true)
     await cargarDatos(true)
+  }
+
+  function handleDeleteCarga(cargaId: string, chofer: string) {
+    const doDelete = async () => {
+      setCargas(prev => prev.filter(c => c.id !== cargaId))
+      deleteCachedCarga(cargaId)
+      try {
+        await eliminarCarga(cargaId)
+      } catch (e: unknown) {
+        await cargarDatos(true)
+        const msg = e instanceof Error ? e.message : 'No se pudo eliminar'
+        Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg)
+      }
+    }
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`¿Eliminar la carga de ${chofer}?`)) doDelete()
+    } else {
+      Alert.alert('Eliminar carga', `¿Eliminar la carga de ${chofer}?`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: doDelete },
+      ])
+    }
   }
 
   if (turnoLoading) {
@@ -85,6 +115,7 @@ export default function CargasScreen() {
           {cargas.length > 0 && (
             <Text style={styles.subtitle}>
               {cargas.length} carga{cargas.length !== 1 ? 's' : ''} · {totalCargados}/{totalPallets} pallets
+              {!isOnline ? '  ● Sin red' : ''}
             </Text>
           )}
         </View>
@@ -124,6 +155,7 @@ export default function CargasScreen() {
                   pathname: '/(main)/carga/[id]',
                   params: { id: c.id },
                 })}
+                onDelete={() => handleDeleteCarga(c.id, c.chofer)}
               />
             ))
           )}

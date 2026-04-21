@@ -8,34 +8,37 @@ interface Props {
   index: number
   onCheck: () => void
   onLongPress: () => void
+  onDelete: () => void
   key?: string | number
 }
 
-export function PalletCard({ pallet, index, onCheck, onLongPress }: Props) {
+export function PalletCard({ pallet, index, onCheck, onLongPress, onDelete }: Props) {
   const cargado = pallet.estado === 'cargado'
 
   return (
-    <TouchableOpacity
-      onLongPress={onLongPress}
-      delayLongPress={400}
-      activeOpacity={0.85}
-      style={[styles.card, cargado && styles.cardCargado]}
-    >
-      {/* Check zone */}
+    <View style={[styles.card, cargado && styles.cardCargado]}>
+
+      {/* Zona check — lado izquierdo, full height, 64px */}
       <TouchableOpacity
-        style={styles.checkZone}
+        style={[styles.checkZone, cargado && styles.checkZoneDone]}
         onPress={onCheck}
+        onLongPress={onLongPress}
+        delayLongPress={400}
         disabled={cargado}
-        activeOpacity={0.6}
-        hitSlop={8}
+        activeOpacity={0.5}
       >
         <View style={[styles.circle, cargado && styles.circleDone]}>
           {cargado && <Text style={styles.tick}>✓</Text>}
         </View>
       </TouchableOpacity>
 
-      {/* Info */}
-      <View style={styles.info}>
+      {/* Info — centro */}
+      <TouchableOpacity
+        style={styles.info}
+        onLongPress={onLongPress}
+        delayLongPress={400}
+        activeOpacity={0.7}
+      >
         <Text style={styles.indexLabel}>Pallet {index + 1}</Text>
         <Text style={[styles.cajas, cargado && styles.cajasDone]}>
           {pallet.cantidad_cajas} cajas
@@ -47,55 +50,72 @@ export function PalletCard({ pallet, index, onCheck, onLongPress }: Props) {
             })}
           </Text>
         )}
-      </View>
+        {!cargado && (
+          <Text style={styles.hint}>Tocá el círculo para marcar · mantenés para editar</Text>
+        )}
+      </TouchableOpacity>
 
-      {/* Estado */}
+      {/* Zona derecha: badge + delete */}
       <View style={styles.right}>
         {cargado ? (
           <View style={styles.badgeDone}>
-            <Text style={styles.badgeDoneText}>CARGADO</Text>
+            <Text style={styles.badgeDoneText}>✓ CARGADO</Text>
           </View>
         ) : (
           <>
             <View style={styles.badgePiso}>
               <Text style={styles.badgePisoText}>EN PISO</Text>
             </View>
-            <Text style={styles.hint}>mantené</Text>
+            {/* Zona eliminar — full height, separada con borde */}
+            <TouchableOpacity
+              style={styles.deleteZone}
+              onPress={onDelete}
+              activeOpacity={0.6}
+            >
+              <Text style={styles.deleteIcon}>🗑</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>
-    </TouchableOpacity>
+
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 6,
+    marginBottom: 8,
     overflow: 'hidden',
-    minHeight: 60,
+    minHeight: 72,
   },
   cardCargado: {
     borderColor: colors.successDim,
     backgroundColor: '#0d1f0d',
   },
+
+  // ── Check zone ──────────────────────────────────────────────────────────────
   checkZone: {
-    width: 56,
-    alignSelf: 'stretch',
+    width: 64,
     alignItems: 'center',
     justifyContent: 'center',
     borderRightWidth: 1,
     borderRightColor: colors.border,
+    backgroundColor: colors.surfaceHigh,
+  },
+  checkZoneDone: {
+    backgroundColor: '#0a1f0a',
+    borderRightColor: colors.successDim,
   },
   circle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 2,
     borderColor: colors.borderHigh,
     alignItems: 'center',
@@ -107,14 +127,17 @@ const styles = StyleSheet.create({
   },
   tick: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 17,
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 19,
   },
+
+  // ── Info ────────────────────────────────────────────────────────────────────
   info: {
     flex: 1,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    justifyContent: 'center',
   },
   indexLabel: {
     color: colors.textFaint,
@@ -122,11 +145,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 1,
+    marginBottom: 2,
   },
   cajas: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     letterSpacing: -0.3,
   },
@@ -136,28 +159,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  hint: {
+    color: colors.textFaint,
+    fontSize: 10,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+
+  // ── Right side ──────────────────────────────────────────────────────────────
   right: {
-    paddingRight: spacing.md,
     alignItems: 'flex-end',
-    gap: 4,
+    justifyContent: 'center',
+    flexDirection: 'row',
   },
   badgeDone: {
     backgroundColor: '#0d2c0d',
     borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: spacing.md,
+    alignSelf: 'center',
   },
   badgeDoneText: {
     color: colors.success,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   badgePiso: {
     backgroundColor: colors.primaryFaint,
     borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'center',
+    marginRight: spacing.sm,
   },
   badgePisoText: {
     color: colors.primary,
@@ -165,9 +200,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  hint: {
-    color: colors.textFaint,
-    fontSize: 9,
-    letterSpacing: 0.3,
+
+  // ── Delete zone — full height, 56px, separated by border ───────────────────
+  deleteZone: {
+    width: 56,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: '#5f1d1d',
+    backgroundColor: '#1a0505',
+  },
+  deleteIcon: {
+    fontSize: 20,
   },
 })

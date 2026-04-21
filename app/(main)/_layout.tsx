@@ -1,8 +1,11 @@
 import { Tabs } from 'expo-router'
 import { colors } from '../../src/constants/theme'
 import { Text } from 'react-native'
+import { useKeepAwake } from 'expo-keep-awake'
 
 export default function MainLayout() {
+  useKeepAwake()
+
   return (
     <Tabs
       screenOptions={{

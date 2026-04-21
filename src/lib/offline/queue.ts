@@ -1,34 +1,64 @@
-import * as SecureStore from 'expo-secure-store'
-
-const QUEUE_KEY = 'offline_queue'
+import { dbEnqueueOp, dbGetQueue, dbRemoveOp, dbClearQueue, dbGetQueueCount } from './db'
 
 export type OfflineOp =
-  | { type: 'CHECK_PALLET';   palletId: string;   timestamp: number }
-  | { type: 'ADD_NOTE';       cargaId: string;    nota: string;        timestamp: number }
-  | { type: 'ADD_INCIDENCIA'; cargaId: string;    tipo: string;        descripcion: string; timestamp: number }
-  | { type: 'EDIT_PALLET';    palletId: string;   cantidad_cajas: number; timestamp: number }
-  | { type: 'DELETE_PALLET';  palletId: string;   timestamp: number }
+  // Pallet ops
+  | { type: 'CHECK_PALLET';    palletId: string }
+  | { type: 'EDIT_PALLET';     palletId: string;   cantidad_cajas: number }
+  | { type: 'DELETE_PALLET';   palletId: string }
+  // Carga ops
+  | { type: 'CREATE_CARGA';    payload: Record<string, unknown>; localId: string }
+  | { type: 'DELETE_CARGA';    cargaId: string }
+  | { type: 'AVANZAR_ESTADO';  cargaId: string;    nuevoEstado: string }
+  | { type: 'LLEGADA_CAMION';  cargaId: string }
+  | { type: 'GUARDAR_NOTA';    cargaId: string;    nota: string }
+  // Cliente ops
+  | { type: 'ADD_CLIENTE';     payload: Record<string, unknown>; localId: string }
+  | { type: 'DELETE_CLIENTE';  clienteId: string }
+  | { type: 'UPDATE_HOJA_RUTA'; clienteId: string; pallets_hoja_ruta: number | null; cajas_hoja_ruta: number | null }
+  // Incidencia / nota
+  | { type: 'ADD_INCIDENCIA';  cargaId: string;    tipo: string; descripcion: string }
 
-export async function enqueueOp(op: OfflineOp): Promise<void> {
-  const current = await getQueue()
-  await SecureStore.setItemAsync(QUEUE_KEY, JSON.stringify([...current, op]))
+function genId(): string {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 }
 
-export async function getQueue(): Promise<OfflineOp[]> {
+export function enqueueOp(op: OfflineOp): void {
+  const id = genId()
   try {
-    const raw = await SecureStore.getItemAsync(QUEUE_KEY)
-    return raw ? JSON.parse(raw) : []
+    dbEnqueueOp(id, op.type, op)
+  } catch {
+    // SQLite not available (web) — silently skip queuing
+  }
+}
+
+export function getQueue(): Array<{ id: string; op: OfflineOp }> {
+  try {
+    return dbGetQueue<OfflineOp>()
   } catch {
     return []
   }
 }
 
-export async function clearQueue(): Promise<void> {
-  await SecureStore.deleteItemAsync(QUEUE_KEY)
+export function removeOp(id: string): void {
+  try {
+    dbRemoveOp(id)
+  } catch {
+    // ignore
+  }
 }
 
-export async function removeOp(timestamp: number): Promise<void> {
-  const current = await getQueue()
-  const filtered = current.filter(op => op.timestamp !== timestamp)
-  await SecureStore.setItemAsync(QUEUE_KEY, JSON.stringify(filtered))
+export function clearQueue(): void {
+  try {
+    dbClearQueue()
+  } catch {
+    // ignore
+  }
+}
+
+export function getPendingCount(): number {
+  try {
+    return dbGetQueueCount()
+  } catch {
+    return 0
+  }
 }

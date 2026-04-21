@@ -1,15 +1,17 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Alert, TextInput, Modal,
-  TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, LayoutAnimation, Platform,
+  TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, LayoutAnimation, Platform, Pressable,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'
 import { useCallback } from 'react'
 import { useCarga } from '../../../../src/hooks/useCarga'
-import { addCliente, updateClienteHojaRuta } from '../../../../src/lib/queries/clientes'
+import { useNetworkStatus } from '../../../../src/hooks/useNetworkStatus'
+import { addCliente, updateClienteHojaRuta, deleteCliente } from '../../../../src/lib/queries/clientes'
 import { addIncidencia } from '../../../../src/lib/queries/incidencias'
 import { eliminarCarga } from '../../../../src/lib/queries/cargas'
+import { deleteCachedCarga } from '../../../../src/lib/offline/db'
 import { Button } from '../../../../src/components/ui/Button'
 import { Card } from '../../../../src/components/ui/Card'
 import { EstadoBadge } from '../../../../src/components/EstadoBadge'
@@ -22,7 +24,8 @@ import type { ClienteCarga } from '../../../../src/types/database'
 export default function CargaDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const { carga, loading, avanzar, registrarLlegada, guardarNotaCarga, checkPallet, refresh } = useCarga(id)
+  const { isOnline } = useNetworkStatus()
+  const { carga, loading, avanzar, registrarLlegada, guardarNotaCarga, checkPallet, refresh } = useCarga(id, isOnline)
 
   // Recargar cada vez que la pantalla queda en foco (ej: al volver de pallets)
   useFocusEffect(useCallback(() => { refresh() }, [refresh]))
@@ -94,16 +97,36 @@ export default function CargaDetailScreen() {
     }
   }
 
-  async function handleEliminarCarga() {
-    setErrorMsg(null)
-    setEliminando(true)
-    try {
-      await eliminarCarga(id)
-      router.back()
-    } catch (e: unknown) {
-      setEliminando(false)
-      setErrorMsg(e instanceof Error ? e.message : 'No se pudo eliminar la carga')
+  function handleEliminarCarga() {
+    const doDelete = async () => {
+      setErrorMsg(null)
+      setEliminando(true)
+      try {
+        await eliminarCarga(id)
+        deleteCachedCarga(id)
+        router.replace('/(main)/carga')
+      } catch (e: unknown) {
+        setErrorMsg(e instanceof Error ? e.message : 'No se pudo eliminar la carga')
+      } finally {
+        setEliminando(false)
+      }
     }
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`¿Eliminar la carga de ${carga?.chofer}? Se borran todos sus pallets e incidencias.`)) {
+        doDelete()
+      }
+      return
+    }
+
+    Alert.alert(
+      'Eliminar carga',
+      `¿Eliminar la carga de ${carga?.chofer}? Se borran todos sus pallets e incidencias.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: doDelete },
+      ]
+    )
   }
 
   async function handleAddCliente() {
@@ -127,6 +150,37 @@ export default function CargaDetailScreen() {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleDeleteCliente(clienteId: string, nombre: string) {
+    if (Platform.OS === 'web') {
+      if (!window.confirm(`¿Eliminar cliente "${nombre}" y todos sus pallets?`)) return
+      try {
+        await deleteCliente(clienteId)
+        await refresh()
+      } catch (e: unknown) {
+        window.alert(e instanceof Error ? e.message : 'No se pudo eliminar')
+      }
+      return
+    }
+    Alert.alert(
+      'Eliminar cliente',
+      `¿Eliminar "${nombre}" y todos sus pallets?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar', style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCliente(clienteId)
+              await refresh()
+            } catch (e: unknown) {
+              Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo eliminar')
+            }
+          },
+        },
+      ]
+    )
   }
 
   async function handleGuardarHojaRuta() {
@@ -272,6 +326,7 @@ export default function CargaDetailScreen() {
                   pathname: '/(main)/carga/[id]/pallets',
                   params: { id, clienteId: c.id, clienteNombre: c.nombre },
                 })}
+                onDeleteCliente={() => handleDeleteCliente(c.id, c.nombre)}
               />
             ))
         )}
@@ -322,14 +377,7 @@ export default function CargaDetailScreen() {
         <View style={styles.dangerZone}>
           <Button
             label={eliminando ? 'Eliminando…' : 'Eliminar esta carga'}
-            onPress={() => Alert.alert(
-              'Eliminar carga',
-              `¿Eliminar la carga de ${carga.chofer}? Se borran todos sus pallets e incidencias.`,
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Eliminar', style: 'destructive', onPress: handleEliminarCarga },
-              ]
-            )}
+            onPress={handleEliminarCarga}
             variant="danger"
             fullWidth
             disabled={eliminando}
@@ -488,9 +536,10 @@ interface ClienteSectionProps {
   onCheckPallet: (palletId: string) => Promise<void>
   onEditHoja: () => void
   onEditPallets: () => void
+  onDeleteCliente: () => void
 }
 
-function ClienteSection({ cliente, onCheckPallet, onEditHoja, onEditPallets }: ClienteSectionProps) {
+function ClienteSection({ cliente, onCheckPallet, onEditHoja, onEditPallets, onDeleteCliente }: ClienteSectionProps) {
   const allPallets = cliente.pallets ?? []
   const cargadosCount = allPallets.filter(p => p.estado === 'cargado').length
   const todosCargados = allPallets.length > 0 && cargadosCount === allPallets.length
@@ -528,11 +577,16 @@ function ClienteSection({ cliente, onCheckPallet, onEditHoja, onEditPallets }: C
             </Text>
           )}
         </View>
-        <TouchableOpacity style={cs.editBtn} onPress={onEditPallets} activeOpacity={0.7}>
-          <Text style={cs.editBtnText}>
-            {allPallets.length === 0 ? '+ Pallets' : 'Editar'}
-          </Text>
-        </TouchableOpacity>
+        <View style={cs.headerRight}>
+          <TouchableOpacity style={cs.editBtn} onPress={onEditPallets} activeOpacity={0.7}>
+            <Text style={cs.editBtnText}>
+              {allPallets.length === 0 ? '+ Pallets' : 'Editar'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={cs.deleteClienteBtn} onPress={onDeleteCliente} activeOpacity={0.7}>
+            <Text style={cs.deleteClienteBtnText}>🗑</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Hoja de ruta — siempre visible */}
@@ -653,6 +707,17 @@ const cs = StyleSheet.create({
   },
   headerLeft: { flex: 1, gap: 2 },
   headerRight: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  deleteClienteBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
+    backgroundColor: '#2d0a0a',
+    borderWidth: 1,
+    borderColor: '#5f1d1d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteClienteBtnText: { fontSize: 13 },
   nombre: { color: colors.text, fontSize: 15, fontWeight: '700' },
   counter: { color: colors.textFaint, fontSize: 12 },
   counterDone: { color: colors.success },

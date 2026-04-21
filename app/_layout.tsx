@@ -1,11 +1,17 @@
 import { Stack, Redirect, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { View, ActivityIndicator } from 'react-native'
+import { useEffect } from 'react'
 import { useAuth } from '../src/hooks/useAuth'
 import { colors } from '../src/constants/theme'
+import { initDb } from '../src/lib/offline/db'
 
 export default function RootLayout() {
   const { session, loading } = useAuth()
+
+  useEffect(() => {
+    try { initDb() } catch { /* SQLite no disponible en web */ }
+  }, [])
   const segments = useSegments()
 
   if (loading) {

@@ -16,7 +16,15 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0f172a"
       },
-      "package": "com.quento.controlcarga"
+      "package": "com.quento.controlcarga",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE",
+        "android.permission.WAKE_LOCK"
+      ],
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "bundler": "metro",
@@ -25,7 +33,13 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-mail-composer"
-    ]
+      "expo-mail-composer",
+      "expo-sqlite"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "control-carga-quento"
+      }
+    }
   }
 }

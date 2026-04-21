@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Modal, TouchableOpacity,
-  TouchableWithoutFeedback, Alert, TextInput,
+  TouchableWithoutFeedback, Alert, TextInput, Platform,
 } from 'react-native'
+import * as Haptics from 'expo-haptics'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { usePallets } from '../../../../src/hooks/usePallets'
@@ -62,6 +63,9 @@ export default function PalletsScreen() {
   }
 
   async function handleCheck(palletId: string) {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
+    }
     try {
       await check(palletId)
     } catch (e: unknown) {
@@ -82,7 +86,16 @@ export default function PalletsScreen() {
   }
 
   async function handleDelete(palletId: string) {
-    Alert.alert('Eliminar pallet', '¿Seguro?', [
+    if (Platform.OS === 'web') {
+      if (!window.confirm('¿Eliminar este pallet?')) return
+      try {
+        await remove(palletId)
+      } catch (e: unknown) {
+        window.alert(e instanceof Error ? e.message : 'No se pudo eliminar')
+      }
+      return
+    }
+    Alert.alert('Eliminar pallet', '¿Eliminar este pallet?', [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Eliminar', style: 'destructive',
@@ -197,6 +210,7 @@ export default function PalletsScreen() {
                   index={i}
                   onCheck={() => handleCheck(p.id)}
                   onLongPress={() => handleLongPress(p)}
+                  onDelete={() => handleDelete(p.id)}
                 />
               ))}
 
@@ -214,6 +228,7 @@ export default function PalletsScreen() {
                   index={enPiso + i}
                   onCheck={() => {}}
                   onLongPress={() => handleLongPress(p)}
+                  onDelete={() => {}}
                 />
               ))}
           </>

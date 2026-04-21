@@ -45,11 +45,13 @@ CREATE TABLE cargas (
 
 -- 4. Clientes por carga
 CREATE TABLE clientes_carga (
-  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  carga_id  UUID NOT NULL REFERENCES cargas(id) ON DELETE CASCADE,
-  nombre    TEXT NOT NULL,
-  orden     INT NOT NULL DEFAULT 1,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  carga_id           UUID NOT NULL REFERENCES cargas(id) ON DELETE CASCADE,
+  nombre             TEXT NOT NULL,
+  orden              INT NOT NULL DEFAULT 1,
+  pallets_hoja_ruta  INT,
+  cajas_hoja_ruta    INT,
+  created_at         TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 5. Pallets

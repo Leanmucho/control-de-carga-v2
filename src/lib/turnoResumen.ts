@@ -1,12 +1,13 @@
 /**
  * turnoResumen.ts
- * Genera el resumen del turno, lo guarda localmente y lo exporta como CSV para Excel.
+ * Genera el resumen del turno, lo guarda localmente y lo exporta como XLSX.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as MailComposer from 'expo-mail-composer'
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 import * as Sharing from 'expo-sharing'
 import { Platform } from 'react-native'
+import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
 
 const STORAGE_KEY = 'ultimo_turno_resumen'
@@ -271,39 +272,419 @@ export function generarCSV(r: ResumenTurno): string {
   return '\ufeff' + rows.join('\n')
 }
 
-// ── Compartir como archivo Excel (CSV) ───────────────────────────────────────
+// ── Helpers de estilo Excel ───────────────────────────────────────────────────
+
+function fmtFechaR(iso: string | null | undefined): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+// Paleta de colores
+const C = {
+  navyBg:    '1E3A5F',
+  navyText:  'FFFFFF',
+  tealBg:    '0F766E',
+  greenBg:   '166534',
+  greenCell: 'DCFCE7',
+  greenText: '166534',
+  redCell:   'FEE2E2',
+  redText:   '991B1B',
+  orangeCell:'FEF3C7',
+  orangeText:'92400E',
+  blueLightBg:'DBEAFE',
+  grayBg:    'F1F5F9',
+  grayText:  '475569',
+  border:    'CBD5E1',
+  white:     'FFFFFF',
+  titleBg:   '0F172A',
+}
+
+type XLSXStyle = {
+  font?: { bold?: boolean; color?: { rgb: string }; sz?: number; name?: string; italic?: boolean }
+  fill?: { patternType: string; fgColor: { rgb: string } }
+  alignment?: { horizontal?: string; vertical?: string; wrapText?: boolean }
+  border?: Record<string, { style: string; color: { rgb: string } }>
+}
+
+function solid(rgb: string): XLSXStyle['fill'] {
+  return { patternType: 'solid', fgColor: { rgb } }
+}
+
+function allBorders(rgb = C.border): XLSXStyle['border'] {
+  const s = { style: 'thin', color: { rgb } }
+  return { top: s, bottom: s, left: s, right: s }
+}
+
+function sc(ws: XLSX.WorkSheet, r: number, c: number, style: XLSXStyle) {
+  const addr = XLSX.utils.encode_cell({ r, c })
+  if (!ws[addr]) ws[addr] = { t: 'z', v: '' }
+  ws[addr].s = style
+}
+
+function styleRow(ws: XLSX.WorkSheet, row: number, numCols: number, style: XLSXStyle) {
+  for (let c = 0; c < numCols; c++) sc(ws, row, c, style)
+}
+
+function styleRange(
+  ws: XLSX.WorkSheet, r1: number, c1: number, r2: number, c2: number,
+  style: XLSXStyle
+) {
+  for (let r = r1; r <= r2; r++)
+    for (let c = c1; c <= c2; c++) sc(ws, r, c, style)
+}
+
+const headerStyle: XLSXStyle = {
+  font: { bold: true, color: { rgb: C.navyText }, sz: 11, name: 'Calibri' },
+  fill: solid(C.navyBg),
+  alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
+  border: allBorders('0F2040'),
+}
+
+const labelStyle: XLSXStyle = {
+  font: { bold: true, color: { rgb: C.grayText }, sz: 10, name: 'Calibri' },
+  fill: solid(C.grayBg),
+  alignment: { horizontal: 'left', vertical: 'center' },
+  border: allBorders(),
+}
+
+const valueStyle: XLSXStyle = {
+  font: { sz: 10, name: 'Calibri' },
+  fill: solid(C.white),
+  alignment: { horizontal: 'left', vertical: 'center' },
+  border: allBorders(),
+}
+
+const rowEvenStyle: XLSXStyle = {
+  font: { sz: 10, name: 'Calibri' },
+  fill: solid(C.white),
+  alignment: { horizontal: 'left', vertical: 'center' },
+  border: allBorders(),
+}
+
+const rowOddStyle: XLSXStyle = {
+  font: { sz: 10, name: 'Calibri' },
+  fill: solid(C.grayBg),
+  alignment: { horizontal: 'left', vertical: 'center' },
+  border: allBorders(),
+}
+
+function estadoStyle(estado: string): XLSXStyle {
+  const base: XLSXStyle = {
+    font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: C.grayText } },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: allBorders(),
+  }
+  if (estado === 'finalizado') return { ...base, fill: solid(C.greenCell), font: { ...base.font, color: { rgb: C.greenText } } }
+  if (estado === 'en_carga')   return { ...base, fill: solid(C.blueLightBg), font: { ...base.font, color: { rgb: C.navyBg } } }
+  if (estado === 'controlado') return { ...base, fill: solid(C.orangeCell), font: { ...base.font, color: { rgb: C.orangeText } } }
+  if (estado === 'cargado')    return { ...base, fill: solid(C.greenCell), font: { ...base.font, color: { rgb: C.greenText } } }
+  return { ...base, fill: solid(C.white) }
+}
+
+function numStyle(rgb = C.navyBg): XLSXStyle {
+  return {
+    font: { bold: true, sz: 11, name: 'Calibri', color: { rgb } },
+    fill: solid(C.white),
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: allBorders(),
+  }
+}
+
+// ── Hoja Resumen ──────────────────────────────────────────────────────────────
+
+function buildResumenSheet(r: ResumenTurno): XLSX.WorkSheet {
+  const completados = r.totales.pallets > 0
+    ? Math.round((r.totales.pallets_cargados / r.totales.pallets) * 100)
+    : 0
+
+  // ─ Bloque superior: info + stats (6 cols para alinear con la tabla de cargas)
+  const rows: unknown[][] = [
+    ['RESUMEN DEL TURNO', '', '', '', '', ''],
+    ['', '', '', '', '', ''],
+    ['Controlador', r.controlador, '', '', '', ''],
+    ['Inicio del turno', fmtFechaR(r.fecha_inicio), '', '', '', ''],
+    ['Fin del turno', fmtFechaR(r.fecha_fin), '', '', '', ''],
+    ['', '', '', '', '', ''],
+    ['ESTADÍSTICAS', '', '', '', '', ''],
+    ['Cargas registradas', r.totales.cargas, '', '', '', ''],
+    ['Total pallets', r.totales.pallets, '', '', '', ''],
+    ['Pallets cargados', r.totales.pallets_cargados, '', '', '', ''],
+    ['Pallets pendientes', r.totales.pallets - r.totales.pallets_cargados, '', '', '', ''],
+    ['Total cajas', r.totales.cajas, '', '', '', ''],
+    ['Incidencias', r.totales.incidencias, '', '', '', ''],
+    ['% Completado', `${completados}%`, '', '', '', ''],
+    ['', '', '', '', '', ''],
+  ]
+
+  // ─ Tabla de cargas
+  const cargaHeaders = ['#', 'Chofer', 'Transporte', 'Pallets', 'Cajas', 'Estado']
+  rows.push(cargaHeaders)
+  const cargaDataStart = rows.length
+
+  for (const c of r.cargas) {
+    rows.push([
+      c.numero, c.chofer, c.transporte,
+      `${c.pallets_cargados}/${c.total_pallets}`,
+      c.total_cajas,
+      c.estado,
+    ])
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 22 }, { wch: 26 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 14 }]
+  ws['!rows'] = [{ hpt: 30 }, { hpt: 6 }]
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+    { s: { r: 2, c: 1 }, e: { r: 2, c: 5 } },
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 5 } },
+    { s: { r: 4, c: 1 }, e: { r: 4, c: 5 } },
+    { s: { r: 6, c: 0 }, e: { r: 6, c: 5 } },
+    { s: { r: 7, c: 1 }, e: { r: 7, c: 5 } },
+    { s: { r: 8, c: 1 }, e: { r: 8, c: 5 } },
+    { s: { r: 9, c: 1 }, e: { r: 9, c: 5 } },
+    { s: { r: 10, c: 1 }, e: { r: 10, c: 5 } },
+    { s: { r: 11, c: 1 }, e: { r: 11, c: 5 } },
+    { s: { r: 12, c: 1 }, e: { r: 12, c: 5 } },
+    { s: { r: 13, c: 1 }, e: { r: 13, c: 5 } },
+  ]
+
+  // Título principal
+  sc(ws, 0, 0, {
+    font: { bold: true, sz: 14, color: { rgb: C.navyText }, name: 'Calibri' },
+    fill: solid(C.titleBg),
+    alignment: { horizontal: 'center', vertical: 'center' },
+  })
+
+  // Subtítulo ESTADÍSTICAS
+  sc(ws, 6, 0, {
+    font: { bold: true, sz: 11, color: { rgb: C.navyText }, name: 'Calibri' },
+    fill: solid(C.navyBg),
+    alignment: { horizontal: 'center', vertical: 'center' },
+  })
+
+  // Filas de info (2-4)
+  for (let row = 2; row <= 4; row++) {
+    sc(ws, row, 0, labelStyle)
+    sc(ws, row, 1, valueStyle)
+  }
+
+  // Filas de stats (7-13)
+  for (let row = 7; row <= 13; row++) {
+    sc(ws, row, 0, labelStyle)
+    const isGood = row === 9
+    const isBad  = row === 10 && (r.totales.pallets - r.totales.pallets_cargados) > 0
+    const isWarn = row === 12 && r.totales.incidencias > 0
+    if (isGood)      sc(ws, row, 1, { ...valueStyle, fill: solid(C.greenCell),  font: { bold: true, color: { rgb: C.greenText },  sz: 10 } })
+    else if (isBad)  sc(ws, row, 1, { ...valueStyle, fill: solid(C.redCell),    font: { bold: true, color: { rgb: C.redText },    sz: 10 } })
+    else if (isWarn) sc(ws, row, 1, { ...valueStyle, fill: solid(C.orangeCell), font: { bold: true, color: { rgb: C.orangeText }, sz: 10 } })
+    else             sc(ws, row, 1, valueStyle)
+  }
+
+  // Subtítulo CARGAS (fila 15)
+  const cargaHeaderRow = cargaDataStart - 1
+  styleRow(ws, cargaHeaderRow, cargaHeaders.length, headerStyle)
+
+  // Filas de cargas
+  for (let i = 0; i < r.cargas.length; i++) {
+    const ri = cargaDataStart + i
+    const base = i % 2 === 0 ? rowEvenStyle : rowOddStyle
+    styleRow(ws, ri, cargaHeaders.length, base)
+    sc(ws, ri, 0, { ...base, alignment: { horizontal: 'center' } })
+    sc(ws, ri, 3, { ...base, alignment: { horizontal: 'center' } })
+    sc(ws, ri, 4, { ...base, alignment: { horizontal: 'center' } })
+    sc(ws, ri, 5, estadoStyle(r.cargas[i].estado))
+  }
+
+  return ws
+}
+
+// ── Hoja Cargas ───────────────────────────────────────────────────────────────
+
+function buildCargasSheet(r: ResumenTurno): XLSX.WorkSheet {
+  const headers = ['#', 'Chofer', 'Transporte', 'Remito', 'Clarkista', 'Estado',
+    'Llegada', 'Inicio carga', 'Fin carga', 'Pallets', 'Cargados', 'Cajas', 'Incid.', 'Notas']
+
+  const dataRows = r.cargas.map(c => [
+    c.numero, c.chofer, c.transporte, c.numero_remito ?? '', c.clarkista ?? '',
+    c.estado,
+    fmtFechaR(c.hora_llegada), fmtFechaR(c.hora_inicio_carga), fmtFechaR(c.hora_fin_carga),
+    c.total_pallets, c.pallets_cargados, c.total_cajas, c.incidencias.length, c.notas ?? '',
+  ])
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+  ws['!cols'] = [
+    { wch: 5 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 13 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 9 }, { wch: 7 }, { wch: 7 }, { wch: 24 },
+  ]
+  ws['!rows'] = [{ hpt: 22 }]
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 } as unknown as XLSX.ColInfo
+
+  // Header
+  styleRow(ws, 0, headers.length, headerStyle)
+
+  // Datos
+  dataRows.forEach((row, i) => {
+    const ri = i + 1
+    const base = ri % 2 === 0 ? rowEvenStyle : rowOddStyle
+    styleRow(ws, ri, headers.length, base)
+    // # centrado
+    sc(ws, ri, 0, { ...base, alignment: { horizontal: 'center' } })
+    // Estado con color
+    sc(ws, ri, 5, estadoStyle(String(row[5])))
+    // Nums centrados
+    for (const col of [9, 10, 11, 12]) {
+      sc(ws, ri, col, { ...base, alignment: { horizontal: 'center' } })
+    }
+    // Incidencias en naranja si > 0
+    if (Number(row[12]) > 0) {
+      sc(ws, ri, 12, { ...base, fill: solid(C.orangeCell), font: { bold: true, color: { rgb: C.orangeText }, sz: 10 }, alignment: { horizontal: 'center' } })
+    }
+  })
+
+  return ws
+}
+
+// ── Hoja Detalle pallets ──────────────────────────────────────────────────────
+
+function buildPalletsSheet(r: ResumenTurno): XLSX.WorkSheet {
+  const headers = ['Carga #', 'Chofer', 'Cliente', 'Pallet #', 'Cajas', 'Estado', 'Hora carga']
+  const dataRows: unknown[][] = []
+
+  for (const c of r.cargas) {
+    for (const cl of c.clientes) {
+      for (const p of cl.pallets) {
+        dataRows.push([c.numero, c.chofer, cl.nombre, p.numero, p.cantidad_cajas, p.estado, fmtFechaR(p.hora_carga)])
+      }
+      // Subtotal por cliente
+      dataRows.push(['', '', `▸ Total ${cl.nombre}`, '', cl.total_cajas,
+        `${cl.pallets_cargados}/${cl.total_pallets} cargados`, ''])
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+  ws['!cols'] = [{ wch: 8 }, { wch: 20 }, { wch: 22 }, { wch: 9 }, { wch: 7 }, { wch: 13 }, { wch: 14 }]
+  ws['!rows'] = [{ hpt: 22 }]
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 } as unknown as XLSX.ColInfo
+
+  styleRow(ws, 0, headers.length, headerStyle)
+
+  let ri = 1
+  for (const c of r.cargas) {
+    for (const cl of c.clientes) {
+      for (const p of cl.pallets) {
+        const base = ri % 2 === 0 ? rowEvenStyle : rowOddStyle
+        styleRow(ws, ri, headers.length, base)
+        sc(ws, ri, 0, { ...base, alignment: { horizontal: 'center' } })
+        sc(ws, ri, 3, { ...base, alignment: { horizontal: 'center' } })
+        sc(ws, ri, 4, { ...base, alignment: { horizontal: 'center' } })
+        sc(ws, ri, 5, estadoStyle(p.estado))
+        ri++
+      }
+      // Fila subtotal
+      styleRow(ws, ri, headers.length, {
+        font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: C.navyBg } },
+        fill: solid(C.blueLightBg),
+        alignment: { horizontal: 'left', vertical: 'center' },
+        border: allBorders(),
+      })
+      sc(ws, ri, 4, {
+        font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: C.navyBg } },
+        fill: solid(C.blueLightBg),
+        alignment: { horizontal: 'center' },
+        border: allBorders(),
+      })
+      ri++
+    }
+  }
+
+  return ws
+}
+
+// ── Hoja Incidencias ──────────────────────────────────────────────────────────
+
+function buildIncidenciasSheet(r: ResumenTurno): XLSX.WorkSheet {
+  const headers = ['Carga #', 'Chofer', 'Tipo', 'Descripción', 'Hora']
+  const dataRows: unknown[][] = []
+  for (const c of r.cargas) {
+    for (const inc of c.incidencias) {
+      dataRows.push([c.numero, c.chofer, inc.tipo, inc.descripcion, fmtFechaR(inc.hora)])
+    }
+  }
+  if (dataRows.length === 0) dataRows.push(['—', '—', '—', 'Sin incidencias registradas', '—'])
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+  ws['!cols'] = [{ wch: 8 }, { wch: 20 }, { wch: 18 }, { wch: 40 }, { wch: 14 }]
+  ws['!rows'] = [{ hpt: 22 }]
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 } as unknown as XLSX.ColInfo
+
+  // Header naranja/rojo para incidencias
+  styleRow(ws, 0, headers.length, {
+    font: { bold: true, color: { rgb: C.navyText }, sz: 11, name: 'Calibri' },
+    fill: solid('7F1D1D'),
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: allBorders('5F0F0F'),
+  })
+
+  dataRows.forEach((_, i) => {
+    const ri = i + 1
+    const base: XLSXStyle = {
+      font: { sz: 10, name: 'Calibri' },
+      fill: solid(ri % 2 === 0 ? C.white : 'FFF7F7'),
+      alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+      border: allBorders('FECACA'),
+    }
+    styleRow(ws, ri, headers.length, base)
+    sc(ws, ri, 0, { ...base, alignment: { horizontal: 'center' } })
+    sc(ws, ri, 2, { ...base, fill: solid(C.orangeCell), font: { bold: true, color: { rgb: C.orangeText }, sz: 10 } })
+  })
+
+  return ws
+}
+
+// ── Función principal ─────────────────────────────────────────────────────────
 
 export async function compartirComoExcel(resumen: ResumenTurno): Promise<void> {
-  const csv = generarCSV(resumen)
   const fecha = new Date(resumen.fecha_inicio)
     .toLocaleDateString('es-AR')
     .replace(/\//g, '-')
-  const fileName = `turno-${resumen.controlador.replace(/\s+/g, '_')}-${fecha}.csv`
+  const safeNombre = resumen.controlador.replace(/\s+/g, '_')
 
   if (Platform.OS === 'web') {
-    // En web: descarga directa
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, buildResumenSheet(resumen),     '📊 Resumen')
+    XLSX.utils.book_append_sheet(wb, buildCargasSheet(resumen),      '🚛 Cargas')
+    XLSX.utils.book_append_sheet(wb, buildPalletsSheet(resumen),     '📦 Pallets')
+    XLSX.utils.book_append_sheet(wb, buildIncidenciasSheet(resumen), '⚠ Incidencias')
+    const binary = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true })
+    const blob = new Blob([binary], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = fileName
+    a.download = `turno-${safeNombre}-${fecha}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
     return
   }
 
-  // En móvil: guardar y compartir
-  const fileUri = FileSystem.cacheDirectory + fileName
-  await FileSystem.writeAsStringAsync(fileUri, csv, {
-    encoding: FileSystem.EncodingType.UTF8,
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, buildResumenSheet(resumen),       '📊 Resumen')
+  XLSX.utils.book_append_sheet(wb, buildCargasSheet(resumen),        '🚛 Cargas')
+  XLSX.utils.book_append_sheet(wb, buildPalletsSheet(resumen),       '📦 Pallets')
+  XLSX.utils.book_append_sheet(wb, buildIncidenciasSheet(resumen),   '⚠ Incidencias')
+
+  const binary = XLSX.write(wb, { type: 'base64', bookType: 'xlsx', cellStyles: true })
+  const fileUri = `${FileSystem.documentDirectory}turno-${safeNombre}-${fecha}.xlsx`
+  await FileSystem.writeAsStringAsync(fileUri, binary, {
+    encoding: FileSystem.EncodingType.Base64,
   })
 
   const canShare = await Sharing.isAvailableAsync()
   if (canShare) {
     await Sharing.shareAsync(fileUri, {
-      mimeType: 'text/csv',
-      dialogTitle: 'Exportar resumen de turno',
-      UTI: 'public.comma-separated-values-text',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: `Turno ${fecha} — ${resumen.controlador}`,
     })
   }
 }
@@ -385,64 +766,28 @@ export async function enviarResumenPorEmail(
 }
 
 /**
- * Envía el resumen por email con el CSV adjunto.
- * En web: abre mailto + dispara descarga del archivo.
- * En mobile: adjunta el CSV al cliente de correo nativo.
+ * Envía el resumen directamente por email vía el backend Flask.
+ * No abre ninguna app de correo.
  */
 export async function enviarResumenConAdjunto(
   resumen: ResumenTurno,
   destinatario: string,
 ): Promise<void> {
-  const csv = generarCSV(resumen)
-  const fecha = new Date(resumen.fecha_inicio)
-    .toLocaleDateString('es-AR')
-    .replace(/\//g, '-')
-  const fileName = `turno-${resumen.controlador.replace(/\s+/g, '_')}-${fecha}.csv`
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseKey) throw new Error('Supabase no configurado')
 
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
-  const subject = `Resumen turno ${fmt(resumen.fecha_inicio)} — ${resumen.controlador}`
-  const body = formatearResumenTexto(resumen)
-
-  if (Platform.OS === 'web') {
-    // Descargar CSV
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
-    URL.revokeObjectURL(url)
-    // Abrir cliente de mail
-    const mailto = `mailto:${encodeURIComponent(destinatario)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-    window.open(mailto, '_blank')
-    return
-  }
-
-  // Mobile: guardar CSV y adjuntar
-  const fileUri = FileSystem.cacheDirectory + fileName
-  await FileSystem.writeAsStringAsync(fileUri, csv, {
-    encoding: FileSystem.EncodingType.UTF8,
+  const res = await fetch(`${supabaseUrl}/functions/v1/enviar-resumen`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseKey}`,
+    },
+    body: JSON.stringify({ email: destinatario, resumen }),
   })
 
-  const disponible = await MailComposer.isAvailableAsync()
-  if (!disponible) {
-    // Sin cliente de mail: al menos compartimos el archivo
-    const canShare = await Sharing.isAvailableAsync()
-    if (canShare) {
-      await Sharing.shareAsync(fileUri, {
-        mimeType: 'text/csv',
-        dialogTitle: 'Compartir resumen de turno',
-        UTI: 'public.comma-separated-values-text',
-      })
-    }
-    return
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error ?? `Error al enviar (${res.status})`)
   }
-
-  await MailComposer.composeAsync({
-    recipients: [destinatario],
-    subject,
-    body,
-    attachments: [fileUri],
-  })
 }

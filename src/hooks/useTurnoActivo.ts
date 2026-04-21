@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getTurnoActivo, iniciarTurno, finalizarTurno } from '../lib/queries/turnos'
+import { cacheTurno, getCachedTurnoActivo } from '../lib/offline/db'
 import type { Turno } from '../types/database'
 
 export function useTurnoActivo() {
@@ -11,9 +12,15 @@ export function useTurnoActivo() {
     try {
       const data = await getTurnoActivo()
       setTurno(data)
+      cacheTurno(data)
       setError(null)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al cargar turno')
+      // Sin conexión: leer del cache
+      const cached = getCachedTurnoActivo()
+      setTurno(cached)
+      if (!cached) {
+        setError(e instanceof Error ? e.message : 'Error al cargar turno')
+      }
     } finally {
       setLoading(false)
     }
@@ -24,12 +31,14 @@ export function useTurnoActivo() {
   async function iniciar(controladorId: string) {
     const t = await iniciarTurno(controladorId)
     setTurno(t)
+    cacheTurno(t)
     return t
   }
 
   async function finalizar(turnoId: string) {
     await finalizarTurno(turnoId)
     setTurno(null)
+    cacheTurno(null)
   }
 
   return { turno, loading, error, refresh, iniciar, finalizar }

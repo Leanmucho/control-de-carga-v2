@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { getPallets, checkPallet, addPallet, bulkAddPallets, editPallet, deletePallet } from '../lib/queries/pallets'
 import { enqueueOp } from '../lib/offline/queue'
+import { cachePallet, updateCachedPalletEstado, updateCachedPalletCajas, deleteCachedPallet } from '../lib/offline/db'
 import type { Pallet } from '../types/database'
 
 export function usePallets(clienteCargaId: string, isOnline: boolean) {
@@ -12,6 +13,7 @@ export function usePallets(clienteCargaId: string, isOnline: boolean) {
     try {
       const data = await getPallets(clienteCargaId)
       setPallets(data)
+      for (const p of data) cachePallet(p)
     } finally {
       setLoading(false)
     }
@@ -19,7 +21,6 @@ export function usePallets(clienteCargaId: string, isOnline: boolean) {
 
   useEffect(() => { refresh() }, [refresh])
 
-  // Realtime subscription
   useEffect(() => {
     const channel = supabase
       .channel(`pallets:${clienteCargaId}`)
@@ -39,7 +40,6 @@ export function usePallets(clienteCargaId: string, isOnline: boolean) {
   }, [clienteCargaId, refresh])
 
   async function check(palletId: string) {
-    // Optimistic update
     setPallets(prev =>
       prev.map(p =>
         p.id === palletId
@@ -47,27 +47,35 @@ export function usePallets(clienteCargaId: string, isOnline: boolean) {
           : p
       )
     )
+    updateCachedPalletEstado(palletId)
 
     if (!isOnline) {
-      await enqueueOp({ type: 'CHECK_PALLET', palletId, timestamp: Date.now() })
+      enqueueOp({ type: 'CHECK_PALLET', palletId })
       return
     }
 
     try {
       await checkPallet(palletId)
     } catch {
-      // Roll back optimistic update
       await refresh()
     }
   }
 
   async function add(cantidad_cajas: number) {
+    if (!isOnline) {
+      throw new Error('Sin conexión: guardá los pallets cuando recuperes la red')
+    }
     const p = await addPallet({ cliente_carga_id: clienteCargaId, cantidad_cajas })
+    cachePallet(p)
     setPallets(prev => [...prev, p])
   }
 
   async function addBulk(cantidad_cajas: number, cantidad_pallets: number) {
+    if (!isOnline) {
+      throw new Error('Sin conexión: guardá los pallets cuando recuperes la red')
+    }
     const nuevos = await bulkAddPallets(clienteCargaId, cantidad_cajas, cantidad_pallets)
+    for (const p of nuevos) cachePallet(p)
     setPallets(prev => [...prev, ...nuevos])
   }
 
@@ -75,20 +83,30 @@ export function usePallets(clienteCargaId: string, isOnline: boolean) {
     setPallets(prev =>
       prev.map(p => p.id === palletId ? { ...p, cantidad_cajas } : p)
     )
+    updateCachedPalletCajas(palletId, cantidad_cajas)
+
     if (!isOnline) {
-      await enqueueOp({ type: 'EDIT_PALLET', palletId, cantidad_cajas, timestamp: Date.now() })
+      enqueueOp({ type: 'EDIT_PALLET', palletId, cantidad_cajas })
       return
     }
     await editPallet(palletId, cantidad_cajas)
   }
 
   async function remove(palletId: string) {
+    const snapshot = pallets
     setPallets(prev => prev.filter(p => p.id !== palletId))
+    deleteCachedPallet(palletId)
+
     if (!isOnline) {
-      await enqueueOp({ type: 'DELETE_PALLET', palletId, timestamp: Date.now() })
+      enqueueOp({ type: 'DELETE_PALLET', palletId })
       return
     }
-    await deletePallet(palletId)
+    try {
+      await deletePallet(palletId)
+    } catch (e) {
+      setPallets(snapshot)
+      throw e
+    }
   }
 
   return { pallets, loading, refresh, check, add, addBulk, edit, remove }

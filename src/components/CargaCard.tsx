@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native'
 import { EstadoBadge } from './EstadoBadge'
 import { colors, spacing, radius, ESTADO_COLORS } from '../constants/theme'
 import type { Carga } from '../types/database'
@@ -8,10 +8,11 @@ import type { EstadoCarga } from '../constants/estados'
 interface Props {
   carga: Carga
   onPress: () => void
+  onDelete?: () => void
   key?: string | number
 }
 
-export function CargaCard({ carga, onPress }: Props) {
+export function CargaCard({ carga, onPress, onDelete }: Props) {
   const totalPallets = carga.clientes_carga?.reduce(
     (s, c) => s + (c.pallets?.length ?? 0), 0
   ) ?? 0
@@ -38,7 +39,19 @@ export function CargaCard({ carga, onPress }: Props) {
             <Text style={styles.chofer} numberOfLines={1}>{carga.chofer}</Text>
             <Text style={styles.transporte} numberOfLines={1}>{carga.transporte}</Text>
           </View>
-          <EstadoBadge estado={carga.estado as EstadoCarga} size="sm" />
+          <View style={styles.topRight}>
+            <EstadoBadge estado={carga.estado as EstadoCarga} size="sm" />
+            {onDelete && (
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={onDelete}
+                hitSlop={6}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.deleteBtnText}>🗑</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Progress bar (only when there are pallets) */}
@@ -135,6 +148,18 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   titleArea: { flex: 1, paddingRight: 8 },
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  deleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#2d0a0a',
+    borderWidth: 1,
+    borderColor: '#5f1d1d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtnText: { fontSize: 12 },
   chofer: {
     color: colors.text,
     fontSize: 15,

@@ -83,25 +83,38 @@ export default function TurnoScreen() {
   async function handleEnviarYCerrar() {
     if (!turno || !resumen) return
     if (!email.trim() || !email.includes('@')) {
-      Alert.alert('Email inválido', 'Ingresá un email válido para enviar el resumen.')
+      if (Platform.OS === 'web') {
+        window.alert('Ingresá un email válido para enviar el resumen.')
+      } else {
+        Alert.alert('Email inválido', 'Ingresá un email válido para enviar el resumen.')
+      }
       return
     }
     setEnviando(true)
     try {
       await enviarResumenConAdjunto(resumen, email.trim())
     } catch (e: unknown) {
-      // Si falla el email avisamos pero no bloqueamos el cierre
-      Alert.alert(
-        'No se pudo enviar el email',
-        e instanceof Error ? e.message : 'Revisá tu conexión. El turno se cerrará igual.',
-      )
+      const msg = e instanceof Error ? e.message : 'Revisá tu conexión. El turno se cerrará igual.'
+      if (Platform.OS === 'web') {
+        window.alert(`No se pudo enviar el email: ${msg}`)
+      } else {
+        Alert.alert('No se pudo enviar el email', msg)
+      }
+    } finally {
+      setEnviando(false)
     }
     await cerrarTurnoYSalir()
   }
 
   // Paso 2b: solo cerrar sin enviar
-  async function handleSoloCerrar() {
+  function handleSoloCerrar() {
     if (!turno) return
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Cerrás el turno sin enviar el resumen por email?')) {
+        cerrarTurnoYSalir()
+      }
+      return
+    }
     Alert.alert(
       'Cerrar sin enviar',
       '¿Cerrás el turno sin enviar el resumen por email?',
@@ -117,14 +130,18 @@ export default function TurnoScreen() {
     setCerrando(true)
     try {
       await finalizar(turno.id)
+      setShowModal(false)
+      await signOut()
     } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudo cerrar el turno'
+      if (Platform.OS === 'web') {
+        window.alert(`Error: ${msg}`)
+      } else {
+        Alert.alert('Error', msg)
+      }
+    } finally {
       setCerrando(false)
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo cerrar el turno')
-      return
     }
-    setShowModal(false)
-    // Sign out automático al cerrar turno
-    await signOut()
   }
 
   if (loading) {
