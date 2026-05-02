@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Modal, TouchableOpacity,
-  TouchableWithoutFeedback, Alert, TextInput, Platform,
+  TouchableWithoutFeedback, Alert, TextInput, Platform, KeyboardAvoidingView,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useCarga } from '../../../../src/hooks/useCarga'
 import { usePallets } from '../../../../src/hooks/usePallets'
 import { useNetworkStatus } from '../../../../src/hooks/useNetworkStatus'
 import { PalletCard } from '../../../../src/components/PalletCard'
@@ -20,7 +21,9 @@ export default function PalletsScreen() {
   }>()
   const router = useRouter()
   const { isOnline } = useNetworkStatus()
+  const { carga } = useCarga(id, isOnline)
   const { pallets, loading, check, add, addBulk, edit, remove } = usePallets(clienteId, isOnline)
+  const puedeMarcar = carga?.estado === 'en_carga'
 
   // Modal: agregar en piso (individual o bulk)
   const [showAdd, setShowAdd] = useState(false)
@@ -63,6 +66,7 @@ export default function PalletsScreen() {
   }
 
   async function handleCheck(palletId: string) {
+    if (!puedeMarcar) return
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
     }
@@ -131,11 +135,31 @@ export default function PalletsScreen() {
 
   // ── Calculadora ─────────────────────────────────────────────────────────────
 
+  function calcApply(a: number, b: number, op: string | null) {
+    if (op === '+') return a + b
+    if (op === '-') return a - b
+    if (op === calcBtns[0][3]) return a * b
+    if (op === calcBtns[0][2]) return b !== 0 ? a / b : 0
+    if (op === 'Ã—') return a * b
+    if (op === 'Ã·') return b !== 0 ? a / b : 0
+    return b
+  }
+
+  function calcFormat(n: number) {
+    return String(Number.isInteger(n) ? n : Number(n.toFixed(2)))
+  }
+
   function calcPress(val: string) {
     if (val === 'C') { setCalcDisplay('0'); setCalcPrev(''); setCalcOp(null); return }
     if (val === '⌫') { setCalcDisplay(d => d.length > 1 ? d.slice(0, -1) : '0'); return }
     if (['+', '-', '×', '÷'].includes(val)) {
-      setCalcPrev(calcDisplay); setCalcOp(val); setCalcDisplay('0'); return
+      if (calcPrev && calcOp) {
+        const res = calcApply(parseFloat(calcPrev), parseFloat(calcDisplay), calcOp)
+        setCalcPrev(calcFormat(res))
+      } else {
+        setCalcPrev(calcDisplay)
+      }
+      setCalcOp(val); setCalcDisplay('0'); return
     }
     if (val === '=') {
       const a = parseFloat(calcPrev), b = parseFloat(calcDisplay)
@@ -211,6 +235,7 @@ export default function PalletsScreen() {
                   onCheck={() => handleCheck(p.id)}
                   onLongPress={() => handleLongPress(p)}
                   onDelete={() => handleDelete(p.id)}
+                  canCheck={puedeMarcar}
                 />
               ))}
 
@@ -258,6 +283,7 @@ export default function PalletsScreen() {
 
       {/* ── Modal: Agregar en piso ── */}
       <Modal visible={showAdd} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableWithoutFeedback onPress={() => setShowAdd(false)}>
           <View style={styles.overlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
@@ -325,10 +351,12 @@ export default function PalletsScreen() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Modal: Editar ── */}
       <Modal visible={!!editId} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableWithoutFeedback onPress={() => setEditId(null)}>
           <View style={styles.overlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
@@ -352,6 +380,7 @@ export default function PalletsScreen() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Modal: Calculadora ── */}

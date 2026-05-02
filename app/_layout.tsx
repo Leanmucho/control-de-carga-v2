@@ -12,6 +12,12 @@ export default function RootLayout() {
   useEffect(() => {
     try { initDb() } catch { /* SQLite no disponible en web */ }
   }, [])
+
+  // NOTA: la cola offline NO se drena al volver al primer plano ni al
+  // reconectar. La sincronización ocurre solo al cerrar el turno
+  // (ver app/(main)/turno/index.tsx). Esto evita carreras mientras el
+  // operador sigue cargando y simplifica el modelo offline-first.
+
   const segments = useSegments()
 
   if (loading) {

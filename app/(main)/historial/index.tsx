@@ -35,11 +35,14 @@ export default function HistorialScreen() {
   const [transporte, setTransporte] = useState('')
   const [fecha, setFecha] = useState('')
   const [cliente, setCliente] = useState('')
-  const hayFiltros = !!(chofer || transporte || fecha || cliente)
+  const [estado, setEstado] = useState('todos')
+  const [soloIncidencias, setSoloIncidencias] = useState(false)
+  const [soloDiferencias, setSoloDiferencias] = useState(false)
+  const hayFiltros = !!(chofer || transporte || fecha || cliente || estado !== 'todos' || soloIncidencias || soloDiferencias)
 
   // Para no re-filtrar innecesariamente
-  const filtrosRef = useRef({ chofer, transporte, fecha, cliente })
-  filtrosRef.current = { chofer, transporte, fecha, cliente }
+  const filtrosRef = useRef({ chofer, transporte, fecha, cliente, estado, soloIncidencias, soloDiferencias })
+  filtrosRef.current = { chofer, transporte, fecha, cliente, estado, soloIncidencias, soloDiferencias }
 
   // ── Aplicar filtros localmente cada vez que cambia algo ───────────────────
   const aplicarFiltros = useCallback((base: Carga[]) => {
@@ -51,7 +54,7 @@ export default function HistorialScreen() {
   // Re-filtrar cuando cambian los filtros
   React.useEffect(() => {
     aplicarFiltros(todasCargas)
-  }, [chofer, transporte, fecha, cliente, todasCargas, aplicarFiltros])
+  }, [chofer, transporte, fecha, cliente, estado, soloIncidencias, soloDiferencias, todasCargas, aplicarFiltros])
 
   // ── Carga lazy solo al entrar a la pantalla ───────────────────────────────
   useFocusEffect(
@@ -118,6 +121,9 @@ export default function HistorialScreen() {
     setTransporte('')
     setFecha('')
     setCliente('')
+    setEstado('todos')
+    setSoloIncidencias(false)
+    setSoloDiferencias(false)
   }
 
   // ── Formato del último sync ───────────────────────────────────────────────
@@ -210,6 +216,33 @@ export default function HistorialScreen() {
               returnKeyType="done"
             />
           </View>
+        </View>
+        <View style={styles.segmentRow}>
+          {['todos', 'en_piso', 'controlado', 'en_carga', 'finalizado'].map(e => (
+            <TouchableOpacity
+              key={e}
+              style={[styles.segmentBtn, estado === e && styles.segmentBtnActive]}
+              onPress={() => setEstado(e)}
+            >
+              <Text style={[styles.segmentText, estado === e && styles.segmentTextActive]}>
+                {e === 'todos' ? 'Todos' : e.replace('_', ' ')}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.quickFilters}>
+          <TouchableOpacity
+            style={[styles.quickBtn, soloIncidencias && styles.quickBtnActive]}
+            onPress={() => setSoloIncidencias(v => !v)}
+          >
+            <Text style={[styles.quickText, soloIncidencias && styles.quickTextActive]}>Con incidencias</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickBtn, soloDiferencias && styles.quickBtnActive]}
+            onPress={() => setSoloDiferencias(v => !v)}
+          >
+            <Text style={[styles.quickText, soloDiferencias && styles.quickTextActive]}>Con diferencias</Text>
+          </TouchableOpacity>
         </View>
         {hayFiltros && (
           <TouchableOpacity style={styles.limpiarBtn} onPress={limpiar}>
@@ -335,6 +368,31 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   limpiarText: { color: colors.textMuted, fontSize: 12 },
+  segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  segmentBtn: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  segmentBtnActive: { borderColor: colors.primary, backgroundColor: colors.primaryFaint },
+  segmentText: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
+  segmentTextActive: { color: colors.primary },
+  quickFilters: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  quickBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 7,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  quickBtnActive: { borderColor: colors.warning, backgroundColor: colors.warning + '18' },
+  quickText: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
+  quickTextActive: { color: colors.warning },
 
   list: { padding: spacing.md, paddingBottom: 40 },
 

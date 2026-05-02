@@ -4,6 +4,7 @@
  * Guarda en AsyncStorage por usuario.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { getCargaMetrics } from './cargaMetrics'
 import type { Carga } from '../types/database'
 
 function cacheKey(userId: string) { return `historial_cargas_${userId}` }
@@ -41,6 +42,9 @@ export interface FiltrosHistorial {
   transporte?: string
   fecha?: string   // formato DD/MM/YYYY
   cliente?: string
+  estado?: string
+  soloIncidencias?: boolean
+  soloDiferencias?: boolean
 }
 
 export function filtrarCargas(cargas: Carga[], filtros: FiltrosHistorial): Carga[] {
@@ -61,6 +65,12 @@ export function filtrarCargas(cargas: Carga[], filtros: FiltrosHistorial): Carga
       )
       if (!hayCliente) return false
     }
+    if (filtros.estado?.trim() && filtros.estado !== 'todos') {
+      if (c.estado !== filtros.estado) return false
+    }
+    const metrics = getCargaMetrics(c)
+    if (filtros.soloIncidencias && metrics.incidencias === 0) return false
+    if (filtros.soloDiferencias && !metrics.tieneDiferencias) return false
     return true
   })
 }

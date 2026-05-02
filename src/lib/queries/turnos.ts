@@ -2,7 +2,10 @@ import { supabase } from '../supabase'
 import type { Turno } from '../../types/database'
 
 export async function getTurnoActivo(): Promise<Turno | null> {
-  const { data: { user } } = await supabase.auth.getUser()
+  // getSession() lee de AsyncStorage local — funciona offline.
+  // (getUser() hace una llamada HTTP que falla sin red y rompe el cache.)
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user
   if (!user) return null
 
   const { data, error } = await supabase
@@ -12,9 +15,11 @@ export async function getTurnoActivo(): Promise<Turno | null> {
     .eq('controlador_id', user.id)
     .maybeSingle()
 
+  // Tirar errores reales (red, RLS, etc.) para que el caller pueda caer al cache.
+  // `data === null` con `error === null` significa "no hay turno activo" (caso real).
   if (error) {
     console.warn('[turnos] getTurnoActivo error:', error.message)
-    return null
+    throw new Error(error.message)
   }
   return data
 }

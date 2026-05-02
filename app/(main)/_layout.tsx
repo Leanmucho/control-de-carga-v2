@@ -2,11 +2,14 @@ import { Tabs } from 'expo-router'
 import { colors } from '../../src/constants/theme'
 import { Text } from 'react-native'
 import { useKeepAwake } from 'expo-keep-awake'
+import { OfflineSyncBanner } from '../../src/components/OfflineSyncBanner'
 
 export default function MainLayout() {
   useKeepAwake()
 
   return (
+    <>
+    <OfflineSyncBanner />
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -35,6 +38,13 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
+        name="sync"
+        options={{
+          title: 'Sync',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>S</Text>,
+        }}
+      />
+      <Tabs.Screen
         name="historial"
         options={{
           title: 'Historial',
@@ -42,5 +52,6 @@ export default function MainLayout() {
         }}
       />
     </Tabs>
+    </>
   )
 }

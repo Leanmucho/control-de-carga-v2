@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native'
 import { EstadoBadge } from './EstadoBadge'
 import { colors, spacing, radius, ESTADO_COLORS } from '../constants/theme'
+import { formatDiff, getCargaMetrics } from '../lib/cargaMetrics'
 import type { Carga } from '../types/database'
 import type { EstadoCarga } from '../constants/estados'
 
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function CargaCard({ carga, onPress, onDelete }: Props) {
+  const m = getCargaMetrics(carga)
   const totalPallets = carga.clientes_carga?.reduce(
     (s, c) => s + (c.pallets?.length ?? 0), 0
   ) ?? 0
@@ -73,6 +75,13 @@ export function CargaCard({ carga, onPress, onDelete }: Props) {
         <View style={styles.chipsRow}>
           {totalCajas > 0 && (
             <Chip label="Cajas" value={String(totalCajas)} />
+          )}
+          {m.tieneDiferencias && (
+            <View style={styles.warnChip}>
+              <Text style={styles.warnText}>
+                Dif. {m.diffPallets !== 0 ? `P ${formatDiff(m.diffPallets)}` : `C ${formatDiff(m.diffCajas)}`}
+              </Text>
+            </View>
           )}
           {carga.numero_remito ? (
             <Chip label="Remito" value={carga.numero_remito} />
@@ -211,5 +220,18 @@ const styles = StyleSheet.create({
     color: '#fca5a5',
     fontSize: 11,
     fontWeight: '600',
+  },
+  warnChip: {
+    backgroundColor: colors.warning + '22',
+    borderRadius: radius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  warnText: {
+    color: colors.warning,
+    fontSize: 11,
+    fontWeight: '700',
   },
 })

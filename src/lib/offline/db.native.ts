@@ -126,12 +126,26 @@ export function getCachedTurnoActivo(): Turno | null {
 
 // ─── Cargas ───────────────────────────────────────────────────────────────────
 
-export function cacheCargas(cargas: Carga[]): void {
+/**
+ * Refresca el cache con las cargas remotas. Las cargas cuyos IDs estén en
+ * `preserveIds` NO se borran (típicamente, cargas creadas offline pendientes
+ * de sincronizar — todavía no existen en remoto y se perderían).
+ */
+export function cacheCargas(cargas: Carga[], preserveIds?: Set<string>): void {
   if (cargas.length === 0) return
   const db = getDb()
   const turnoId = cargas[0].turno_id
   db.withTransactionSync(() => {
-    db.runSync(`DELETE FROM cargas WHERE turno_id = ?`, [turnoId])
+    if (preserveIds && preserveIds.size > 0) {
+      // Borrar todas las cargas del turno EXCEPTO las marcadas como preservadas.
+      const placeholders = Array.from(preserveIds).map(() => '?').join(',')
+      db.runSync(
+        `DELETE FROM cargas WHERE turno_id = ? AND id NOT IN (${placeholders})`,
+        [turnoId, ...preserveIds]
+      )
+    } else {
+      db.runSync(`DELETE FROM cargas WHERE turno_id = ?`, [turnoId])
+    }
     for (const c of cargas) {
       db.runSync(
         `INSERT OR REPLACE INTO cargas VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -242,6 +256,13 @@ export function cachePallet(p: Pallet): void {
     `INSERT OR REPLACE INTO pallets VALUES (?,?,?,?,?,?)`,
     [p.id, p.cliente_carga_id, p.cantidad_cajas, p.estado,
      p.hora_carga ?? null, p.created_at]
+  )
+}
+
+export function getCachedPallets(clienteCargaId: string): Pallet[] {
+  return getDb().getAllSync<Pallet>(
+    `SELECT * FROM pallets WHERE cliente_carga_id = ? ORDER BY created_at`,
+    [clienteCargaId]
   )
 }
 

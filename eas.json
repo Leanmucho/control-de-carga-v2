@@ -22,6 +22,10 @@
     "production": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://lglnteszyoatzyarntgw.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxnbG50ZXN6eW9hdHp5YXJudGd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMTY2OTIsImV4cCI6MjA5MTY5MjY5Mn0.JdmwQaK-TjkL4zkT1TARcqeHb0tURpGuPM3rtZD83r8"
       }
     }
   },

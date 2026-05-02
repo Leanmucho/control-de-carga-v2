@@ -38,8 +38,10 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "control-carga-quento"
-      }
-    }
+        "projectId": "256da71f-8296-41a9-82b3-3c7c599da105"
+      },
+      "router": {}
+    },
+    "owner": "leanmucho"
   }
 }

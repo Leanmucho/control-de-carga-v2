@@ -2,15 +2,17 @@ import { supabase } from '../supabase'
 import type { ClienteCarga } from '../../types/database'
 
 export async function addCliente(payload: {
+  id?: string
   carga_id: string
   nombre: string
   orden: number
   pallets_hoja_ruta?: number | null
   cajas_hoja_ruta?: number | null
 }): Promise<ClienteCarga> {
+  // Idempotente para que un retry de la cola offline no duplique clientes.
   const { data, error } = await supabase
     .from('clientes_carga')
-    .insert(payload)
+    .upsert(payload, { onConflict: 'id', ignoreDuplicates: true })
     .select()
     .single()
   if (error) throw error

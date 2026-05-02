@@ -7,10 +7,12 @@ import { useRouter, useFocusEffect } from 'expo-router'
 import { useTurnoActivo } from '../../../src/hooks/useTurnoActivo'
 import { getCargas, eliminarCarga } from '../../../src/lib/queries/cargas'
 import { cacheCargas, getCachedCargas, deleteCachedCarga } from '../../../src/lib/offline/db'
+import { enqueueOp, getPendingCargaIds, getPendingCount } from '../../../src/lib/offline/queue'
+import { syncOfflineQueue } from '../../../src/lib/offline/sync'
 import { useNetworkStatus } from '../../../src/hooks/useNetworkStatus'
 import { CargaCard } from '../../../src/components/CargaCard'
 import { Button } from '../../../src/components/ui/Button'
-import { colors, spacing, radius } from '../../../src/constants/theme'
+import { colors, spacing } from '../../../src/constants/theme'
 import type { Carga } from '../../../src/types/database'
 
 export default function CargasScreen() {
@@ -20,22 +22,44 @@ export default function CargasScreen() {
   const [cargas, setCargas] = useState<Carga[]>([])
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
+  const [pendingCount, setPendingCount] = useState(0)
 
   const cargarDatos = useCallback(async (silent = false) => {
     if (!turno?.id) { setCargas([]); return }
-    if (!silent) setLoading(true)
+    // Hidratar desde cache primero — incluye cargas creadas offline.
+    const cached = getCachedCargas(turno.id)
+    if (cached.length > 0) setCargas(cached)
+    if (!silent && cached.length === 0) setLoading(true)
+
+    setPendingIds(getPendingCargaIds())
+    setPendingCount(getPendingCount())
+
+    if (!isOnline) {
+      setLoading(false)
+      setRefreshing(false)
+      return
+    }
+
     try {
       const data = await getCargas(turno.id)
-      setCargas(data)
-      cacheCargas(data)
+      // Mergear: las cargas que solo existen localmente (pendientes de sync)
+      // no están en `data`, las preservamos del cache.
+      const remoteIds = new Set(data.map(c => c.id))
+      const localOnly = cached.filter(c => !remoteIds.has(c.id))
+      const merged = [...localOnly, ...data]
+      setCargas(merged)
+      // Pasamos los IDs pendientes para que cacheCargas NO los borre del SQLite
+      // (de lo contrario perderíamos cargas creadas offline al refrescar online).
+      cacheCargas(data, getPendingCargaIds())
     } catch {
-      const cached = getCachedCargas(turno.id)
-      if (cached.length > 0) setCargas(cached)
+      // mantener cache
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [turno?.id])
+  }, [turno?.id, isOnline])
 
   useFocusEffect(
     useCallback(() => { cargarDatos() }, [cargarDatos])
@@ -46,16 +70,51 @@ export default function CargasScreen() {
     await cargarDatos(true)
   }
 
+  async function handleSyncPendientes() {
+    if (!isOnline) {
+      const msg = 'No hay conexión. Podés seguir trabajando; sincronizá cuando vuelva internet.'
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Sin conexión', msg)
+      return
+    }
+
+    setSyncing(true)
+    try {
+      const result = await syncOfflineQueue()
+      if (result.skipped) {
+        const msg = 'No hay conexión. Los cambios siguen guardados en este dispositivo.'
+        Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Sin conexión', msg)
+        return
+      }
+      if (result.failed > 0) {
+        const msg = `Se sincronizaron ${result.synced}, pero quedaron ${result.failed} cambio(s) pendiente(s). Reintentá con buena conexión.`
+        Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Sincronización incompleta', msg)
+      }
+      await cargarDatos(true)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudo sincronizar'
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg)
+    } finally {
+      setPendingIds(getPendingCargaIds())
+      setPendingCount(getPendingCount())
+      setSyncing(false)
+    }
+  }
+
   function handleDeleteCarga(cargaId: string, chofer: string) {
     const doDelete = async () => {
       setCargas(prev => prev.filter(c => c.id !== cargaId))
       deleteCachedCarga(cargaId)
+      if (!isOnline) {
+        enqueueOp({ type: 'DELETE_CARGA', cargaId })
+        return
+      }
       try {
         await eliminarCarga(cargaId)
       } catch (e: unknown) {
-        await cargarDatos(true)
-        const msg = e instanceof Error ? e.message : 'No se pudo eliminar'
-        Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg)
+        // Encolar y avisar — no revertimos para no marear al usuario.
+        enqueueOp({ type: 'DELETE_CARGA', cargaId })
+        const msg = e instanceof Error ? e.message : 'No se pudo eliminar — quedó pendiente de sincronizar'
+        Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Aviso', msg)
       }
     }
 
@@ -127,6 +186,23 @@ export default function CargasScreen() {
         />
       </View>
 
+      {pendingCount > 0 && (
+        <View style={styles.pendingBanner}>
+          <View style={styles.pendingRow}>
+            <Text style={styles.pendingText}>
+              {pendingCount} cambio{pendingCount !== 1 ? 's' : ''} pendiente{pendingCount !== 1 ? 's' : ''} de sincronizar
+            </Text>
+            <Button
+              label={syncing ? 'Sincronizando...' : 'Sincronizar'}
+              onPress={handleSyncPendientes}
+              variant="secondary"
+              disabled={syncing}
+              style={styles.syncButton}
+            />
+          </View>
+        </View>
+      )}
+
       {loading ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
       ) : (
@@ -148,15 +224,21 @@ export default function CargasScreen() {
             </View>
           ) : (
             cargas.map(c => (
-              <CargaCard
-                key={c.id}
-                carga={c}
-                onPress={() => router.push({
-                  pathname: '/(main)/carga/[id]',
-                  params: { id: c.id },
-                })}
-                onDelete={() => handleDeleteCarga(c.id, c.chofer)}
-              />
+              <View key={c.id}>
+                {pendingIds.has(c.id) && (
+                  <View style={styles.pendingTag}>
+                    <Text style={styles.pendingTagText}>● PENDIENTE DE SINCRONIZAR</Text>
+                  </View>
+                )}
+                <CargaCard
+                  carga={c}
+                  onPress={() => router.push({
+                    pathname: '/(main)/carga/[id]',
+                    params: { id: c.id },
+                  })}
+                  onDelete={() => handleDeleteCarga(c.id, c.chofer)}
+                />
+              </View>
             ))
           )}
         </ScrollView>
@@ -194,4 +276,26 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 48, marginBottom: spacing.md },
   emptyTitle: { color: colors.textMuted, fontSize: 16, fontWeight: '600' },
   emptySub: { color: colors.textFaint, fontSize: 13, marginTop: 4, textAlign: 'center' },
+  pendingBanner: {
+    backgroundColor: colors.warning + '22',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.warning + '55',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+  },
+  pendingText: { color: colors.warning, fontSize: 12, fontWeight: '600', flex: 1 },
+  pendingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  syncButton: { paddingHorizontal: 10, paddingVertical: 4 },
+  pendingTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.warning + '22',
+    borderWidth: 1,
+    borderColor: colors.warning,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 4,
+    marginLeft: 4,
+  },
+  pendingTagText: { color: colors.warning, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
 })

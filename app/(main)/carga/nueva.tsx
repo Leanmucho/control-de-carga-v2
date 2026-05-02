@@ -5,14 +5,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { useTurnoActivo } from '../../../src/hooks/useTurnoActivo'
+import { useNetworkStatus } from '../../../src/hooks/useNetworkStatus'
 import { crearCarga } from '../../../src/lib/queries/cargas'
+import { cacheCarga } from '../../../src/lib/offline/db'
+import { enqueueOp } from '../../../src/lib/offline/queue'
+import { genUuid } from '../../../src/lib/uuid'
 import { Button } from '../../../src/components/ui/Button'
 import { Input } from '../../../src/components/ui/Input'
 import { colors, spacing } from '../../../src/constants/theme'
+import type { Carga } from '../../../src/types/database'
 
 export default function NuevaCargaScreen() {
   const router = useRouter()
   const { turno } = useTurnoActivo()
+  const { isOnline } = useNetworkStatus()
   const [chofer, setChofer] = useState('')
   const [transporte, setTransporte] = useState('')
   const [remito, setRemito] = useState('')
@@ -25,17 +31,56 @@ export default function NuevaCargaScreen() {
     if (!turno) { Alert.alert('Error', 'No hay turno activo'); return }
 
     setLoading(true)
+
+    // Generamos el UUID local — el mismo que va a usar Postgres cuando sincronicemos.
+    const localId = genUuid()
+    const now = new Date().toISOString()
+    const payload = {
+      id: localId,
+      turno_id: turno.id,
+      chofer: chofer.trim(),
+      transporte: transporte.trim(),
+      numero_remito: remito.trim() || undefined,
+      clarkista_nombre: clarkista.trim() || undefined,
+    }
+
+    // Cacheamos enseguida para que el detalle funcione apenas navegamos.
+    const cargaLocal: Carga = {
+      id: localId,
+      turno_id: turno.id,
+      chofer: payload.chofer,
+      transporte: payload.transporte,
+      numero_remito: payload.numero_remito ?? '',
+      clarkista_id: null,
+      clarkista_nombre: payload.clarkista_nombre ?? '',
+      estado: 'en_piso',
+      hora_llegada_camion: null,
+      hora_inicio_carga: null,
+      hora_fin_carga: null,
+      notas: '',
+      created_at: now,
+      clientes_carga: [],
+      incidencias: [],
+    }
+    cacheCarga(cargaLocal)
+
+    if (!isOnline) {
+      // Sin red: encolar y navegar. Cuando vuelva la red el sync ejecuta el INSERT
+      // con este mismo `id`, así que la carga del servidor queda con el mismo UUID.
+      enqueueOp({ type: 'CREATE_CARGA', payload, localId })
+      setLoading(false)
+      router.replace(`/(main)/carga/${localId}`)
+      return
+    }
+
     try {
-      const carga = await crearCarga({
-        turno_id: turno.id,
-        chofer: chofer.trim(),
-        transporte: transporte.trim(),
-        numero_remito: remito.trim() || undefined,
-        clarkista_nombre: clarkista.trim() || undefined,
-      })
+      const carga = await crearCarga(payload)
+      cacheCarga(carga)
       router.replace(`/(main)/carga/${carga.id}`)
-    } catch (e: unknown) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo crear la carga')
+    } catch {
+      // Falló online (red intermitente) — encolar igual y navegar al cache local.
+      enqueueOp({ type: 'CREATE_CARGA', payload, localId })
+      router.replace(`/(main)/carga/${localId}`)
     } finally {
       setLoading(false)
     }
@@ -54,6 +99,12 @@ export default function NuevaCargaScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          {!isOnline && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineText}>● Sin red — la carga se sincroniza al reconectarse</Text>
+            </View>
+          )}
+
           <Input
             label="Chofer *"
             value={chofer}
@@ -113,4 +164,13 @@ const styles = StyleSheet.create({
   },
   title: { color: colors.text, fontSize: 17, fontWeight: '700' },
   scroll: { padding: spacing.md, paddingBottom: 40 },
+  offlineBanner: {
+    backgroundColor: colors.warning + '22',
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: 8,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  offlineText: { color: colors.warning, fontSize: 12, fontWeight: '600' },
 })

@@ -1,23 +1,24 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Alert, TextInput, Modal,
-  TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, LayoutAnimation, Platform, Pressable,
+  TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, LayoutAnimation, Platform, Pressable, KeyboardAvoidingView,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'
 import { useCallback } from 'react'
 import { useCarga } from '../../../../src/hooks/useCarga'
 import { useNetworkStatus } from '../../../../src/hooks/useNetworkStatus'
-import { addCliente, updateClienteHojaRuta, deleteCliente } from '../../../../src/lib/queries/clientes'
-import { addIncidencia } from '../../../../src/lib/queries/incidencias'
+import { updateClienteHojaRuta } from '../../../../src/lib/queries/clientes'
 import { eliminarCarga } from '../../../../src/lib/queries/cargas'
 import { deleteCachedCarga } from '../../../../src/lib/offline/db'
+import { enqueueOp } from '../../../../src/lib/offline/queue'
 import { Button } from '../../../../src/components/ui/Button'
 import { Card } from '../../../../src/components/ui/Card'
 import { EstadoBadge } from '../../../../src/components/EstadoBadge'
 import { Input } from '../../../../src/components/ui/Input'
 import { colors, spacing, radius } from '../../../../src/constants/theme'
 import { TRANSICIONES, TRANSICION_LABELS, TIPOS_INCIDENCIA } from '../../../../src/constants/estados'
+import { formatDiff, getCargaMetrics, getCargaWarnings } from '../../../../src/lib/cargaMetrics'
 import type { EstadoCarga } from '../../../../src/constants/estados'
 import type { ClienteCarga } from '../../../../src/types/database'
 
@@ -25,7 +26,10 @@ export default function CargaDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
   const { isOnline } = useNetworkStatus()
-  const { carga, loading, avanzar, registrarLlegada, guardarNotaCarga, checkPallet, refresh } = useCarga(id, isOnline)
+  const {
+    carga, loading, avanzar, registrarLlegada, guardarNotaCarga, checkPallet, refresh,
+    addClienteCarga, deleteClienteCarga, addIncidenciaCarga,
+  } = useCarga(id, isOnline)
 
   // Recargar cada vez que la pantalla queda en foco (ej: al volver de pallets)
   useFocusEffect(useCallback(() => { refresh() }, [refresh]))
@@ -63,17 +67,53 @@ export default function CargaDetailScreen() {
   const cargados = carga.clientes_carga?.reduce(
     (s, c) => s + (c.pallets?.filter(p => p.estado === 'cargado').length ?? 0), 0
   ) ?? 0
-  const pendientes = total - cargados
   const cajas = carga.clientes_carga?.reduce(
     (s, c) => s + (c.pallets?.reduce((s2, p) => s2 + (p.cantidad_cajas ?? 0), 0) ?? 0), 0
   ) ?? 0
+  const cajasCargadas = carga.clientes_carga?.reduce(
+    (s, c) => s + (c.pallets?.filter(p => p.estado === 'cargado')
+      .reduce((s2, p) => s2 + (p.cantidad_cajas ?? 0), 0) ?? 0), 0
+  ) ?? 0
+
+  const fmtHora = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : null
+  const metrics = getCargaMetrics(carga)
+  const warnings = getCargaWarnings(carga)
+
+  function confirmarConAvisos(titulo: string, avisos: string[]): Promise<boolean> {
+    if (avisos.length === 0) return Promise.resolve(true)
+    const msg = avisos.join('\n')
+    if (Platform.OS === 'web') return Promise.resolve(window.confirm(`${titulo}\n\n${msg}`))
+    return new Promise(resolve => {
+      Alert.alert(titulo, msg, [
+        { text: 'Revisar', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Continuar', style: 'destructive', onPress: () => resolve(true) },
+      ])
+    })
+  }
 
   async function handleAvanzar() {
     if (!siguienteEstado || avanzando) return
+    // Para pasar a "en_carga" exigimos que el camión haya llegado.
+    if (siguienteEstado === 'en_carga' && !carga?.hora_llegada_camion) {
+      setErrorMsg('Antes de iniciar la carga, registrá la llegada del camión')
+      return
+    }
+    if (siguienteEstado === 'controlado') {
+      const avisos = []
+      if (metrics.clientes === 0) avisos.push('No hay clientes registrados.')
+      if (metrics.pallets === 0) avisos.push('No hay pallets registrados.')
+      if (avisos.length > 0 && !(await confirmarConAvisos('Controlar carga incompleta', avisos))) return
+    }
+    if (siguienteEstado === 'finalizado' && !(await confirmarConAvisos('Finalizar con avisos', warnings))) return
     setErrorMsg(null)
     setAvanzando(true)
     try {
       await avanzar(siguienteEstado)
+      // Al finalizar, volver al menú de Turno.
+      if (siguienteEstado === 'finalizado') {
+        router.replace('/(main)/turno')
+      }
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : 'No se pudo cambiar el estado')
     } finally {
@@ -82,6 +122,16 @@ export default function CargaDetailScreen() {
   }
 
   async function handleCheckPallet(palletId: string) {
+    // Solo se pueden marcar pallets cuando la carga está EN CARGA
+    // (controlado en piso + camión llegado).
+    if (carga?.estado !== 'en_carga') {
+      setErrorMsg(
+        carga?.estado === 'finalizado'
+          ? 'La carga ya está finalizada'
+          : 'Solo podés marcar pallets cuando la carga está EN CARGA (controlá en piso e iniciá la carga primero)'
+      )
+      return
+    }
     if (Platform.OS !== 'web') {
       LayoutAnimation.configureNext({
         duration: 300,
@@ -101,12 +151,20 @@ export default function CargaDetailScreen() {
     const doDelete = async () => {
       setErrorMsg(null)
       setEliminando(true)
+      // Borrado optimista local + encolar el delete remoto.
+      deleteCachedCarga(id)
+      if (!isOnline) {
+        enqueueOp({ type: 'DELETE_CARGA', cargaId: id })
+        router.replace('/(main)/carga')
+        setEliminando(false)
+        return
+      }
       try {
         await eliminarCarga(id)
-        deleteCachedCarga(id)
         router.replace('/(main)/carga')
-      } catch (e: unknown) {
-        setErrorMsg(e instanceof Error ? e.message : 'No se pudo eliminar la carga')
+      } catch {
+        enqueueOp({ type: 'DELETE_CARGA', cargaId: id })
+        router.replace('/(main)/carga')
       } finally {
         setEliminando(false)
       }
@@ -133,10 +191,10 @@ export default function CargaDetailScreen() {
     if (!nuevoCliente.trim()) return
     setSaving(true)
     try {
-      await addCliente({
-        carga_id: id,
+      // El hook genera UUID local, escribe cache y encola si está offline.
+      // No falla por red.
+      await addClienteCarga({
         nombre: nuevoCliente.trim(),
-        orden: (carga?.clientes_carga?.length ?? 0) + 1,
         pallets_hoja_ruta: nuevoPallets ? parseInt(nuevoPallets, 10) : null,
         cajas_hoja_ruta: nuevoCajas ? parseInt(nuevoCajas, 10) : null,
       })
@@ -144,7 +202,6 @@ export default function CargaDetailScreen() {
       setNuevoPallets('')
       setNuevoCajas('')
       setShowCliente(false)
-      await refresh()
     } catch (e: unknown) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Error')
     } finally {
@@ -153,14 +210,16 @@ export default function CargaDetailScreen() {
   }
 
   async function handleDeleteCliente(clienteId: string, nombre: string) {
-    if (Platform.OS === 'web') {
-      if (!window.confirm(`¿Eliminar cliente "${nombre}" y todos sus pallets?`)) return
+    const doDelete = async () => {
       try {
-        await deleteCliente(clienteId)
-        await refresh()
+        await deleteClienteCarga(clienteId)
       } catch (e: unknown) {
-        window.alert(e instanceof Error ? e.message : 'No se pudo eliminar')
+        const msg = e instanceof Error ? e.message : 'No se pudo eliminar'
+        Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg)
       }
+    }
+    if (Platform.OS === 'web') {
+      if (window.confirm(`¿Eliminar cliente "${nombre}" y todos sus pallets?`)) doDelete()
       return
     }
     Alert.alert(
@@ -168,17 +227,7 @@ export default function CargaDetailScreen() {
       `¿Eliminar "${nombre}" y todos sus pallets?`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar', style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteCliente(clienteId)
-              await refresh()
-            } catch (e: unknown) {
-              Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo eliminar')
-            }
-          },
-        },
+        { text: 'Eliminar', style: 'destructive', onPress: doDelete },
       ]
     )
   }
@@ -186,16 +235,25 @@ export default function CargaDetailScreen() {
   async function handleGuardarHojaRuta() {
     if (!editHojaCliente) return
     setSaving(true)
-    try {
-      await updateClienteHojaRuta(
-        editHojaCliente.id,
-        editHojaPallets ? parseInt(editHojaPallets, 10) : null,
-        editHojaCajas ? parseInt(editHojaCajas, 10) : null,
-      )
+    const clienteId = editHojaCliente.id
+    const pallets_hoja_ruta = editHojaPallets ? parseInt(editHojaPallets, 10) : null
+    const cajas_hoja_ruta = editHojaCajas ? parseInt(editHojaCajas, 10) : null
+
+    if (!isOnline) {
+      enqueueOp({ type: 'UPDATE_HOJA_RUTA', clienteId, pallets_hoja_ruta, cajas_hoja_ruta })
       setEditHojaCliente(null)
       await refresh()
-    } catch (e: unknown) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Error')
+      setSaving(false)
+      return
+    }
+    try {
+      await updateClienteHojaRuta(clienteId, pallets_hoja_ruta, cajas_hoja_ruta)
+      setEditHojaCliente(null)
+      await refresh()
+    } catch {
+      enqueueOp({ type: 'UPDATE_HOJA_RUTA', clienteId, pallets_hoja_ruta, cajas_hoja_ruta })
+      setEditHojaCliente(null)
+      await refresh()
     } finally {
       setSaving(false)
     }
@@ -221,10 +279,9 @@ export default function CargaDetailScreen() {
     if (!incDesc.trim()) return
     setSaving(true)
     try {
-      await addIncidencia({ carga_id: id, tipo: incTipo, descripcion: incDesc.trim() })
+      await addIncidenciaCarga(incTipo, incDesc.trim())
       setIncDesc('')
       setShowIncidencia(false)
-      await refresh()
     } catch (e: unknown) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Error')
     } finally {
@@ -249,20 +306,35 @@ export default function CargaDetailScreen() {
             {carga.clarkista_nombre ? <Text style={styles.meta}>Clarkista: {carga.clarkista_nombre}</Text> : null}
             {carga.numero_remito ? <Text style={styles.meta}>Remito: {carga.numero_remito}</Text> : null}
           </View>
-          <View style={styles.tiempos}>
-            {!carga.hora_llegada_camion ? (
+          {!carga.hora_llegada_camion ? (
+            <View style={styles.tiempos}>
               <Button
                 label="🚛 Llegó el camión"
                 onPress={() => registrarLlegada().catch(() => {})}
                 variant="secondary"
                 style={{ flex: 1 }}
               />
-            ) : (
-              <Text style={styles.tiempo}>
-                Llegada: {new Date(carga.hora_llegada_camion).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            )}
-          </View>
+            </View>
+          ) : (
+            <View style={styles.tiemposGrid}>
+              <View style={styles.tiempoItem}>
+                <Text style={styles.tiempoLbl}>Llegada</Text>
+                <Text style={styles.tiempoVal}>{fmtHora(carga.hora_llegada_camion)}</Text>
+              </View>
+              <View style={styles.tiempoItem}>
+                <Text style={styles.tiempoLbl}>Inicio</Text>
+                <Text style={[styles.tiempoVal, !carga.hora_inicio_carga && styles.tiempoValEmpty]}>
+                  {fmtHora(carga.hora_inicio_carga) ?? '—'}
+                </Text>
+              </View>
+              <View style={styles.tiempoItem}>
+                <Text style={styles.tiempoLbl}>Fin</Text>
+                <Text style={[styles.tiempoVal, !carga.hora_fin_carga && styles.tiempoValEmpty]}>
+                  {fmtHora(carga.hora_fin_carga) ?? '—'}
+                </Text>
+              </View>
+            </View>
+          )}
         </Card>
 
         {/* Banner de error */}
@@ -273,17 +345,37 @@ export default function CargaDetailScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Stats strip */}
+        {/* Stats strip — pallets cargados/total + cajas cargadas/total */}
         {total > 0 && (
           <View style={styles.statsStrip}>
-            <MiniStat label="Total" value={total} />
-            <MiniStat label="Cargados" value={cargados} color={colors.success} />
-            <MiniStat label="Pendientes" value={pendientes} color={pendientes > 0 ? colors.warning : colors.textFaint} />
-            <MiniStat label="Cajas" value={cajas} />
+            <MiniStat label="Pallets" value={`${cargados}/${total}`}
+              color={cargados === total ? colors.success : undefined} />
+            <MiniStat label="Cajas" value={`${cajasCargadas}/${cajas}`}
+              color={cajasCargadas === cajas && cajas > 0 ? colors.success : undefined} />
           </View>
         )}
 
         {/* Botón de transición */}
+        {metrics.tieneHojaRuta && (
+          <View style={[styles.diffBox, metrics.tieneDiferencias && styles.diffBoxWarn]}>
+            <Text style={styles.diffTitle}>Hoja de ruta</Text>
+            <Text style={styles.diffText}>
+              Pallets {metrics.pallets}/{metrics.hojaPallets || '-'} · Cajas {metrics.cajas}/{metrics.hojaCajas || '-'}
+            </Text>
+            {metrics.tieneDiferencias && (
+              <Text style={styles.diffWarn}>
+                Diferencia: pallets {formatDiff(metrics.diffPallets)} · cajas {formatDiff(metrics.diffCajas)}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {warnings.length > 0 && (
+          <View style={styles.warningBox}>
+            {warnings.map(w => <Text key={w} style={styles.warningText}>{w}</Text>)}
+          </View>
+        )}
+
         {siguienteEstado && (
           <Button
             label={avanzando ? 'Guardando…' : btnLabel}
@@ -320,6 +412,7 @@ export default function CargaDetailScreen() {
                 key={c.id}
                 cliente={c}
                 cargaId={id}
+                cargaEstado={carga.estado as EstadoCarga}
                 onCheckPallet={handleCheckPallet}
                 onEditHoja={() => abrirEditHoja(c)}
                 onEditPallets={() => router.push({
@@ -387,6 +480,7 @@ export default function CargaDetailScreen() {
 
       {/* ── Modales ── */}
       <Modal visible={showCliente} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableWithoutFeedback onPress={() => setShowCliente(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
@@ -425,10 +519,12 @@ export default function CargaDetailScreen() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Modal editar hoja de ruta */}
       <Modal visible={!!editHojaCliente} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableWithoutFeedback onPress={() => setEditHojaCliente(null)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
@@ -461,9 +557,11 @@ export default function CargaDetailScreen() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={showNota} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableWithoutFeedback onPress={() => setShowNota(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
@@ -488,9 +586,11 @@ export default function CargaDetailScreen() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={showIncidencia} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableWithoutFeedback onPress={() => setShowIncidencia(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
@@ -523,6 +623,7 @@ export default function CargaDetailScreen() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )
@@ -533,13 +634,15 @@ export default function CargaDetailScreen() {
 interface ClienteSectionProps {
   cliente: ClienteCarga
   cargaId: string
+  cargaEstado: EstadoCarga
   onCheckPallet: (palletId: string) => Promise<void>
   onEditHoja: () => void
   onEditPallets: () => void
   onDeleteCliente: () => void
 }
 
-function ClienteSection({ cliente, onCheckPallet, onEditHoja, onEditPallets, onDeleteCliente }: ClienteSectionProps) {
+function ClienteSection({ cliente, cargaEstado, onCheckPallet, onEditHoja, onEditPallets, onDeleteCliente }: ClienteSectionProps) {
+  const puedeCargar = cargaEstado === 'en_carga'
   const allPallets = cliente.pallets ?? []
   const cargadosCount = allPallets.filter(p => p.estado === 'cargado').length
   const todosCargados = allPallets.length > 0 && cargadosCount === allPallets.length
@@ -653,11 +756,14 @@ function ClienteSection({ cliente, onCheckPallet, onEditHoja, onEditPallets, onD
             ) : (
               <TouchableOpacity
                 key={p.id}
-                style={cs.palletRow}
+                style={[cs.palletRow, !puedeCargar && cs.palletRowLocked]}
                 onPress={() => handlePress(p.id)}
-                activeOpacity={0.7}
+                disabled={!puedeCargar}
+                activeOpacity={puedeCargar ? 0.7 : 1}
               >
-                <View style={cs.circle} />
+                <View style={[cs.circle, !puedeCargar && cs.circleLocked]}>
+                  {!puedeCargar && <Text style={cs.lockIcon}>🔒</Text>}
+                </View>
                 <View style={cs.palletInfo}>
                   <Text style={cs.palletLabel}>P{i + 1}</Text>
                   <Text style={cs.palletCajas}>{p.cantidad_cajas} cajas</Text>
@@ -676,7 +782,7 @@ function ClienteSection({ cliente, onCheckPallet, onEditHoja, onEditPallets, onD
 
 // ── MiniStat ─────────────────────────────────────────────────────────────────
 
-function MiniStat({ label, value, color }: { label: string; value: number; color?: string }) {
+function MiniStat({ label, value, color }: { label: string; value: number | string; color?: string }) {
   return (
     <View style={miniStat.box}>
       <Text style={[miniStat.num, color ? { color } : null]}>{value}</Text>
@@ -783,6 +889,16 @@ const cs = StyleSheet.create({
   palletRowDone: {
     backgroundColor: '#052e1620',
   },
+  palletRowLocked: {
+    opacity: 0.55,
+  },
+  circleLocked: {
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockIcon: { fontSize: 11 },
   circle: {
     width: 26,
     height: 26,
@@ -857,7 +973,51 @@ const styles = StyleSheet.create({
   meta: { color: colors.textFaint, fontSize: 13 },
   tiempos: { flexDirection: 'row', marginTop: spacing.sm, gap: spacing.sm },
   tiempo: { color: colors.success, fontSize: 13 },
+  tiemposGrid: {
+    flexDirection: 'row',
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  tiempoItem: { flex: 1, alignItems: 'center' },
+  tiempoLbl: {
+    color: colors.textFaint,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  tiempoVal: { color: colors.success, fontSize: 14, fontWeight: '700' },
+  tiempoValEmpty: { color: colors.textFaint, fontWeight: '500' },
   statsStrip: { flexDirection: 'row', gap: 6, marginBottom: spacing.md },
+  diffBox: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  diffBoxWarn: {
+    borderColor: colors.warning,
+    backgroundColor: colors.warning + '14',
+  },
+  diffTitle: { color: colors.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  diffText: { color: colors.text, fontSize: 13, marginTop: 4, fontWeight: '700' },
+  diffWarn: { color: colors.warning, fontSize: 12, marginTop: 3, fontWeight: '800' },
+  warningBox: {
+    backgroundColor: colors.warning + '18',
+    borderWidth: 1,
+    borderColor: colors.warning + '66',
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    gap: 3,
+  },
+  warningText: { color: colors.warning, fontSize: 12, fontWeight: '700' },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

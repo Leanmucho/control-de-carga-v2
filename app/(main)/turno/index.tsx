@@ -6,8 +6,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { useTurnoActivo } from '../../../src/hooks/useTurnoActivo'
+import { useNetworkStatus } from '../../../src/hooks/useNetworkStatus'
 import { useAuth } from '../../../src/hooks/useAuth'
 import { getCargas } from '../../../src/lib/queries/cargas'
+import { syncOfflineQueue } from '../../../src/lib/offline/sync'
+import { getQueue } from '../../../src/lib/offline/queue'
+import { cacheCargas, getCachedCargas } from '../../../src/lib/offline/db'
 import { Button } from '../../../src/components/ui/Button'
 import { CargaCard } from '../../../src/components/CargaCard'
 import { colors, spacing, radius } from '../../../src/constants/theme'
@@ -15,17 +19,21 @@ import {
   construirResumen, guardarResumenLocal,
   compartirComoExcel, enviarResumenConAdjunto,
 } from '../../../src/lib/turnoResumen'
+import { getCargaWarnings } from '../../../src/lib/cargaMetrics'
 import type { Carga } from '../../../src/types/database'
 import type { ResumenTurno } from '../../../src/lib/turnoResumen'
 
 export default function TurnoScreen() {
   const { turno, loading, iniciar, finalizar } = useTurnoActivo()
+  const { isOnline } = useNetworkStatus()
   const { perfil, signOut, userId } = useAuth()
   const router = useRouter()
 
   const [cargas, setCargas] = useState<Carga[]>([])
   const [cargasLoading, setCargasLoading] = useState(false)
   const [construyendo, setConstruyendo] = useState(false)
+  const [sincronizando, setSincronizando] = useState(false)
+  const [pendientes, setPendientes] = useState(0)
 
   // Modal de cierre
   const [showModal, setShowModal] = useState(false)
@@ -34,15 +42,48 @@ export default function TurnoScreen() {
   const [enviando, setEnviando] = useState(false)
   const [cerrando, setCerrando] = useState(false)
 
+  function handleVolverDesdeCierre() {
+    if (enviando || cerrando || sincronizando) return
+    setShowModal(false)
+  }
+
+  function confirmarConAvisos(titulo: string, avisos: string[]): Promise<boolean> {
+    if (avisos.length === 0) return Promise.resolve(true)
+    const msg = avisos.slice(0, 8).join('\n')
+    if (Platform.OS === 'web') return Promise.resolve(window.confirm(`${titulo}\n\n${msg}`))
+    return new Promise(resolve => {
+      Alert.alert(titulo, msg, [
+        { text: 'Revisar', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Continuar', style: 'destructive', onPress: () => resolve(true) },
+      ])
+    })
+  }
+
   useFocusEffect(
     useCallback(() => {
       if (turno?.id) {
-        setCargasLoading(true)
-        getCargas(turno.id).then(setCargas).finally(() => setCargasLoading(false))
+        const cached = getCachedCargas(turno.id)
+        if (cached.length > 0) setCargas(cached)
+        setPendientes(getQueue().length)
+        if (!isOnline) {
+          setCargasLoading(false)
+          return
+        }
+        setCargasLoading(cached.length === 0)
+        getCargas(turno.id)
+          .then(data => {
+            setCargas(data)
+            cacheCargas(data)
+          })
+          .catch(() => {
+            if (cached.length > 0) setCargas(cached)
+          })
+          .finally(() => setCargasLoading(false))
       } else {
         setCargas([])
+        setPendientes(getQueue().length)
       }
-    }, [turno?.id])
+    }, [turno?.id, isOnline])
   )
 
   const totalPallets = cargas.reduce(
@@ -63,10 +104,46 @@ export default function TurnoScreen() {
   }
 
   // Paso 1: abrir modal con resumen precalculado
+  // Sincronizamos la cola offline ANTES de construir el resumen para que
+  // refleje todo lo cargado durante el turno. Si no hay red, avisamos.
   async function handleFinalizarTurno() {
     if (!turno) return
+    const pendientes = getQueue().length
+    if (pendientes > 0 && !isOnline) {
+      const msg = `Hay ${pendientes} cambios sin sincronizar y no hay conexión. Conectate a internet para cerrar el turno y enviar el resumen.`
+      if (Platform.OS === 'web') window.alert(msg)
+      else Alert.alert('Sin conexión', msg)
+      return
+    }
     setConstruyendo(true)
     try {
+      if (pendientes > 0) {
+        setSincronizando(true)
+        try {
+          const result = await syncOfflineQueue()
+          setPendientes(getQueue().length)
+          if (result.skipped) {
+            const msg = 'No hay conexión. Los cambios siguen guardados en este dispositivo.'
+            if (Platform.OS === 'web') window.alert(msg)
+            else Alert.alert('Sin conexión', msg)
+            return
+          }
+          if (result.failed > 0) {
+            const msg = `No se pudieron sincronizar ${result.failed} cambios. Reintentá con buena conexión.`
+            if (Platform.OS === 'web') window.alert(msg)
+            else Alert.alert('Sincronización incompleta', msg)
+            return
+          }
+        } finally {
+          setSincronizando(false)
+        }
+      }
+      const avisosTurno = cargas.flatMap(c => {
+        const avisos = getCargaWarnings(c).map(w => `${c.chofer}: ${w}`)
+        if (c.estado !== 'finalizado') avisos.unshift(`${c.chofer}: carga no finalizada.`)
+        return avisos
+      })
+      if (!(await confirmarConAvisos('Cerrar turno con avisos', avisosTurno))) return
       const controlador = perfil?.nombre ?? 'Controlador'
       const r = await construirResumen(turno.id, controlador)
       await guardarResumenLocal(r)
@@ -76,6 +153,46 @@ export default function TurnoScreen() {
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo preparar el resumen')
     } finally {
       setConstruyendo(false)
+    }
+  }
+
+  async function handleSincronizarPendientes() {
+    if (pendientes === 0 || sincronizando) return
+    if (!isOnline) {
+      const msg = 'No hay conexión. Podés seguir trabajando; sincronizá cuando vuelva internet.'
+      if (Platform.OS === 'web') window.alert(msg)
+      else Alert.alert('Sin conexión', msg)
+      return
+    }
+
+    setSincronizando(true)
+    try {
+      const result = await syncOfflineQueue()
+      setPendientes(getQueue().length)
+      if (result.skipped) {
+        const msg = 'No hay conexión. Los cambios siguen guardados en este dispositivo.'
+        if (Platform.OS === 'web') window.alert(msg)
+        else Alert.alert('Sin conexión', msg)
+        return
+      }
+      if (result.failed > 0) {
+        const msg = `Se sincronizaron ${result.synced}, pero quedaron ${result.failed} cambio(s) pendiente(s). Reintentá con buena conexión.`
+        if (Platform.OS === 'web') window.alert(msg)
+        else Alert.alert('Sincronización incompleta', msg)
+        return
+      }
+      if (turno?.id) {
+        const data = await getCargas(turno.id)
+        setCargas(data)
+        cacheCargas(data)
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudo sincronizar'
+      if (Platform.OS === 'web') window.alert(msg)
+      else Alert.alert('Error', msg)
+    } finally {
+      setPendientes(getQueue().length)
+      setSincronizando(false)
     }
   }
 
@@ -129,6 +246,20 @@ export default function TurnoScreen() {
     if (!turno) return
     setCerrando(true)
     try {
+      // Drenar cualquier op pendiente que haya quedado (ej. ediciones
+      // hechas mientras el modal de resumen estaba abierto).
+      if (getQueue().length > 0) {
+        setSincronizando(true)
+        try {
+          const result = await syncOfflineQueue()
+          setPendientes(getQueue().length)
+          if (result.skipped || result.failed > 0) {
+            throw new Error('Quedan cambios pendientes. Sincronizá con internet antes de cerrar el turno.')
+          }
+        } finally {
+          setSincronizando(false)
+        }
+      }
       await finalizar(turno.id)
       setShowModal(false)
       await signOut()
@@ -200,6 +331,20 @@ export default function TurnoScreen() {
           )}
 
           <View style={styles.actionsCard}>
+            {pendientes > 0 && (
+              <View style={styles.pendingBox}>
+                <Text style={styles.pendingText}>
+                  {pendientes} cambio{pendientes !== 1 ? 's' : ''} pendiente{pendientes !== 1 ? 's' : ''}
+                </Text>
+                <Button
+                  label={sincronizando ? 'Sincronizando...' : 'Sincronizar'}
+                  onPress={handleSincronizarPendientes}
+                  variant="secondary"
+                  disabled={sincronizando || construyendo}
+                  style={styles.pendingButton}
+                />
+              </View>
+            )}
             <View style={styles.actionsRow}>
               <Button
                 label="+ Nueva Carga"
@@ -207,11 +352,11 @@ export default function TurnoScreen() {
                 style={{ flex: 1 }}
               />
               <Button
-                label={construyendo ? 'Preparando…' : 'Finalizar'}
+                label={sincronizando ? 'Sincronizando…' : construyendo ? 'Preparando…' : 'Finalizar'}
                 onPress={handleFinalizarTurno}
                 variant="danger"
                 style={{ flex: 1 }}
-                disabled={construyendo}
+                disabled={construyendo || sincronizando}
               />
             </View>
           </View>
@@ -252,6 +397,15 @@ export default function TurnoScreen() {
 
               {/* Header */}
               <View style={modal.header}>
+                <TouchableOpacity
+                  style={[modal.backBtn, (enviando || cerrando || sincronizando) && modal.backBtnDisabled]}
+                  onPress={handleVolverDesdeCierre}
+                  activeOpacity={0.75}
+                  disabled={enviando || cerrando || sincronizando}
+                >
+                  <Text style={modal.backIcon}>←</Text>
+                  <Text style={modal.backText}>Volver</Text>
+                </TouchableOpacity>
                 <Text style={modal.titulo}>Resumen del Turno</Text>
                 <Text style={modal.subtitulo}>
                   {resumen && new Date(resumen.fecha_inicio).toLocaleString('es-AR', {
@@ -337,19 +491,19 @@ export default function TurnoScreen() {
               {/* Acciones principales */}
               <View style={modal.actions}>
                 <Button
-                  label={enviando ? 'Enviando…' : '📧 Enviar y Cerrar Turno'}
+                  label={sincronizando ? 'Sincronizando…' : enviando ? 'Enviando…' : '📧 Enviar y Cerrar Turno'}
                   onPress={handleEnviarYCerrar}
                   fullWidth
-                  disabled={enviando || cerrando}
-                  loading={enviando}
+                  disabled={enviando || cerrando || sincronizando}
+                  loading={enviando || sincronizando}
                   style={{ marginBottom: spacing.sm }}
                 />
                 <Button
-                  label={cerrando ? 'Cerrando…' : 'Cerrar sin enviar'}
+                  label={sincronizando ? 'Sincronizando…' : cerrando ? 'Cerrando…' : 'Cerrar sin enviar'}
                   onPress={handleSoloCerrar}
                   variant="secondary"
                   fullWidth
-                  disabled={enviando || cerrando}
+                  disabled={enviando || cerrando || sincronizando}
                 />
               </View>
 
@@ -419,6 +573,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1,
     borderColor: colors.border, padding: spacing.sm, marginBottom: spacing.md,
   },
+  pendingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.warning + '18',
+    borderWidth: 1,
+    borderColor: colors.warning + '55',
+  },
+  pendingText: { color: colors.warning, fontSize: 12, fontWeight: '700', flex: 1 },
+  pendingButton: { paddingHorizontal: 10, paddingVertical: 5 },
   actionsRow: { flexDirection: 'row', gap: spacing.sm },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   sectionTitle: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
@@ -441,10 +609,29 @@ const modal = StyleSheet.create({
   header: {
     alignItems: 'center',
     paddingVertical: spacing.lg,
+    paddingHorizontal: 72,
     marginBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  backBtn: {
+    position: 'absolute',
+    left: 0,
+    top: spacing.lg,
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderMid,
+  },
+  backBtnDisabled: { opacity: 0.4 },
+  backIcon: { color: colors.primary, fontSize: 18, fontWeight: '800', lineHeight: 20 },
+  backText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   titulo: { color: colors.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
   subtitulo: { color: colors.textMuted, fontSize: 14, marginTop: 4, textTransform: 'capitalize' },
 

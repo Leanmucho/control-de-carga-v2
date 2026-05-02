@@ -9,25 +9,27 @@ interface Props {
   onCheck: () => void
   onLongPress: () => void
   onDelete: () => void
+  canCheck?: boolean
   key?: string | number
 }
 
-export function PalletCard({ pallet, index, onCheck, onLongPress, onDelete }: Props) {
+export function PalletCard({ pallet, index, onCheck, onLongPress, onDelete, canCheck = true }: Props) {
   const cargado = pallet.estado === 'cargado'
+  const checkDisabled = cargado || !canCheck
 
   return (
     <View style={[styles.card, cargado && styles.cardCargado]}>
 
       {/* Zona check — lado izquierdo, full height, 64px */}
       <TouchableOpacity
-        style={[styles.checkZone, cargado && styles.checkZoneDone]}
+        style={[styles.checkZone, cargado && styles.checkZoneDone, checkDisabled && !cargado && styles.checkZoneDisabled]}
         onPress={onCheck}
         onLongPress={onLongPress}
         delayLongPress={400}
-        disabled={cargado}
+        disabled={checkDisabled}
         activeOpacity={0.5}
       >
-        <View style={[styles.circle, cargado && styles.circleDone]}>
+        <View style={[styles.circle, cargado && styles.circleDone, checkDisabled && !cargado && styles.circleDisabled]}>
           {cargado && <Text style={styles.tick}>✓</Text>}
         </View>
       </TouchableOpacity>
@@ -50,7 +52,7 @@ export function PalletCard({ pallet, index, onCheck, onLongPress, onDelete }: Pr
             })}
           </Text>
         )}
-        {!cargado && (
+        {!cargado && canCheck && (
           <Text style={styles.hint}>Tocá el círculo para marcar · mantenés para editar</Text>
         )}
       </TouchableOpacity>
@@ -112,6 +114,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a1f0a',
     borderRightColor: colors.successDim,
   },
+  checkZoneDisabled: {
+    opacity: 0.5,
+  },
   circle: {
     width: 36,
     height: 36,
@@ -124,6 +129,9 @@ const styles = StyleSheet.create({
   circleDone: {
     backgroundColor: colors.success,
     borderColor: colors.success,
+  },
+  circleDisabled: {
+    borderColor: colors.border,
   },
   tick: {
     color: '#fff',

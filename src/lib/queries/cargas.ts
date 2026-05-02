@@ -31,28 +31,37 @@ export async function getCarga(id: string): Promise<Carga> {
 }
 
 export async function crearCarga(payload: {
+  id?: string
   turno_id: string
   chofer: string
   transporte: string
   numero_remito?: string
   clarkista_nombre?: string
 }): Promise<Carga> {
+  // upsert + ignoreDuplicates → idempotente. Si la cola offline reintenta
+  // un CREATE_CARGA cuyo id ya existe en remoto, no duplicamos.
   const { data, error } = await supabase
     .from('cargas')
-    .insert(payload)
+    .upsert(payload, { onConflict: 'id', ignoreDuplicates: true })
     .select()
     .single()
   if (error) throw error
   return data
 }
 
+/**
+ * `hora` opcional permite preservar la hora real de la transición cuando
+ * la operación se ejecuta diferida desde la cola offline.
+ */
 export async function avanzarEstado(
   cargaId: string,
-  nuevoEstado: EstadoCarga
+  nuevoEstado: EstadoCarga,
+  hora?: string,
 ): Promise<void> {
+  const ts = hora ?? new Date().toISOString()
   const update: Record<string, string> = { estado: nuevoEstado }
-  if (nuevoEstado === 'en_carga')   update.hora_inicio_carga = new Date().toISOString()
-  if (nuevoEstado === 'finalizado') update.hora_fin_carga    = new Date().toISOString()
+  if (nuevoEstado === 'en_carga')   update.hora_inicio_carga = ts
+  if (nuevoEstado === 'finalizado') update.hora_fin_carga    = ts
   const { error } = await supabase
     .from('cargas')
     .update(update)
@@ -60,10 +69,10 @@ export async function avanzarEstado(
   if (error) throw new Error(`Error al actualizar estado: ${error.message} [${error.code}]`)
 }
 
-export async function registrarLlegadaCamion(cargaId: string): Promise<void> {
+export async function registrarLlegadaCamion(cargaId: string, hora?: string): Promise<void> {
   const { error } = await supabase
     .from('cargas')
-    .update({ hora_llegada_camion: new Date().toISOString() })
+    .update({ hora_llegada_camion: hora ?? new Date().toISOString() })
     .eq('id', cargaId)
   if (error) throw new Error(`Error al registrar llegada: ${error.message}`)
 }
